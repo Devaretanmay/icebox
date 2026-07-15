@@ -1,0 +1,18 @@
+[package]
+name = "icebox-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+ipnet.workspace = true
+
+[dev-dependencies]
+icebox-ai = { path = "../icebox-ai" }
+icebox-modules = { path = "../icebox-modules" }
