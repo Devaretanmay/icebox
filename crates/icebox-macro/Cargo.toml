@@ -3,6 +3,8 @@ name = "icebox-macro"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Procedural `#[module(...)]` macro for ICEBOX governance modules."
+repository.workspace = true
 
 [lib]
 proc-macro = true

@@ -2,7 +2,7 @@
 
 Run after building the C ABI:
 
-    cargo build -p icebox-capi
+    cargo build
     cd python && python examples/governed_agent.py
 """
 
@@ -12,7 +12,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from icebox_sdk import Governance
+from icebox import Governance
 
 
 def main():

@@ -45,7 +45,6 @@ jobs:
         run: |
           cargo build --all 2>&1 | grep -E "^warning:" | grep -v "OsvEvent" && exit 1 || exit 0
 
-  # Python SDK check (separate job since it may be faster to not block on Rust)
   python-sdk:
     runs-on: ubuntu-latest
     steps:
@@ -60,7 +59,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build C ABI shared library
-        run: cargo build -p icebox-capi
+        run: cargo build
 
       - name: Verify Python SDK loads and imports
         run: |
@@ -68,8 +67,8 @@ jobs:
           python -c "
           import sys
           sys.path.insert(0, '.')
-          from icebox_sdk import Governance
+          from icebox import Governance
           print('Python SDK loaded successfully')
           "
         env:
-          ICEBOX_CAPI: ../target/debug/libicebox_capi.so
+          ICEBOX_CAPI: ../target/debug/libicebox.so

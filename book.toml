@@ -1,0 +1,10 @@
+[book]
+title = "ICEBOX"
+authors = ["Tanmay Devare"]
+description = "Runtime governance for autonomous offensive security."
+src = "docs/src"
+language = "en"
+
+[output.html]
+git-repository-url = "https://github.com/Devaretanmay/icebox"
+edit-url-template = "https://github.com/Devaretanmay/icebox/edit/main/{path}"

@@ -1,11 +1,11 @@
 <picture>
   <source
-    srcset="https://img.shields.io/badge/status-MVP%20Complete-blue?style=for-the-badge"
+    srcset="https://img.shields.io/badge/version-0.1.0-blue?style=for-the-badge"
     media="(prefers-color-scheme: light)"
   />
   <img
     alt="ICEBOX"
-    src="https://img.shields.io/badge/status-MVP%20Complete-blue?style=for-the-badge"
+    src="https://img.shields.io/badge/version-0.1.0-blue?style=for-the-badge"
   />
 </picture>
 
@@ -13,105 +13,116 @@
 
 > Runtime governance for autonomous offensive security.
 
-[![Build](https://img.shields.io/github/actions/workflow/status/TBD/ICEBOX/ci.yml?branch=main&style=flat-square)](https://github.com/TBD/ICEBOX/actions)
+[![Build](https://img.shields.io/github/actions/workflow/status/Devaretanmay/icebox/ci.yml?branch=main&style=flat-square)](https://github.com/Devaretanmay/icebox/actions)
 [![Rust](https://img.shields.io/badge/rust-stable-orange?style=flat-square)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-72%20passed%200%20failed-brightgreen?style=flat-square)](#-test-suite)
-[![LOC](https://img.shields.io/badge/rust-14k%20LOC-purple?style=flat-square)](#-codebase)
-[![Python SDK](https://img.shields.io/badge/python-sdk%20ready-yellow?style=flat-square)](/python/icebox_sdk.py)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen?style=flat-square)](#self-governance)
+[![Crate](https://img.shields.io/badge/rust-single%20crate-blue?style=flat-square)](#repository-layout)
+[![Python SDK](https://img.shields.io/badge/python-sdk%20ready-yellow?style=flat-square)](/python/icebox)
 
----
-
-ICEBOX is **not** another autonomous pentester. It is the **single governance
-seam** that every human operator, REST client, and LLM agent must pass through
-before anything touches a target.
-
-Think of it as **Kubernetes for autonomous security agents**: the policy,
-approval, audit, memory, and observability layer that sits between autonomous
-security tools and the environments they are authorized to operate on.
+ICEBOX is a runtime governance framework for autonomous offensive security
+tooling. It provides a single, auditable control point — the governance seam —
+through which every human operator, REST client, and autonomous agent must pass
+before any action is taken against an authorized target.
 
 ```text
-┌──────────────────────────────────────────────────────────────┐
-│  Human / CLI / REST Client / LLM Agent / Multi-Agent         │
-│                              │                                │
-│                     ┌────────▼────────┐                      │
-│                     │  ModuleExecutor  │                      │
-│                     │  ::execute()     │  ← THE SEAM          │
-│                     └────────┬────────┘                      │
-│                              │                                │
-│                     ┌────────▼────────┐                      │
-│                     │   Policy Engine  │                      │
-│                     │  • 6 rule types   │                      │
-│                     │  • CVSS/EPSS/KEV  │                      │
-│                     └────────┬────────┘                      │
-│                              │                                │
-│                     ┌────────▼────────┐                      │
-│                     │  Approval Engine │                      │
-│                     │  • Queue + gates  │                      │
-│                     └────────┬────────┘                      │
-│                              │                                │
-│                     ┌────────▼────────┐                      │
-│                     │   Audit Engine   │                      │
-│                     │  • JSON + CSV     │                      │
-│                     └────────┬────────┘                      │
-│                              │                                │
-│               ┌──────────────┼──────────────┐                │
-│               ▼              ▼              ▼                 │
-│          Execution      Memory      Reasoning Traces          │
-│               │              │              │                 │
-│               └──────────────┼──────────────┘                 │
-│                              ▼                                │
-│                        Evidence                              │
-│                    (normalized, scored,                       │
-│                     provenance-tagged)                        │
-└──────────────────────────────────────────────────────────────┘
+Human / CLI / REST Client / LLM Agent / Multi-Agent
+                       │
+                ┌────────▼────────┐
+                │  ModuleExecutor  │   ← THE SEAM
+                │  ::execute()     │
+                └────────┬────────┘
+                       │
+                ┌────────▼────────┐
+                │   Policy Engine  │   6 rule types, CVSS/EPSS/KEV-aware
+                └────────┬────────┘
+                       │
+                ┌────────▼────────┐
+                │  Approval Engine │   queue + gates
+                └────────┬────────┘
+                       │
+                ┌────────▼────────┐
+                │   Audit Engine   │   JSON + CSV
+                └────────┬────────┘
 ```
 
-Because the gate is in **exactly one place**, you can prove what an agent was
-allowed to do, why, and whether the governance actually held. That is the
-product. The offensive modules are just examples that exercise the seam.
-
----
+By centralizing policy enforcement, approval workflow, and audit capture in one
+place, ICEBOX makes it possible to prove what an agent was permitted to do, why,
+and whether the controls held. The included offensive modules are reference
+implementations that exercise the seam; the framework is designed to govern
+arbitrary tools and agents.
 
 ## Features
 
-- **6 policy rule types** — `DenyCapability`, `AllowCapability`, `MaxRisk`,
-  `RequireApproval`, **`DenyIfCvssAbove`**, **`RequireApprovalIf`** (CVSS 4.0,
-  EPSS, KEV-aware)
-- **4 independent safety gates** — charter acceptance, scope allowlist, max-risk
-  ceiling, approval for destructive actions
-- **RBAC** — `viewer` / `operator` / `admin` roles with least-privilege enforcement
-- **Audit trail** — every decision recorded with reason, exportable to JSON or CSV
-- **Reasoning traces** — autonomous agent leaves an explainability trace per phase
-- **Evidence intelligence** — module output normalized, confidence-scored,
-  provenance-tagged
-- **Continuous validation** — policy version monotonic, drift detection, diff reports
-- **Multi-agent orchestration** — run concurrent agents; all share one governed audit trail
-- **Two interfaces** — interactive CLI (REPL) and REST API (identical governance)
-- **Governance SDK** — Rust builder, C ABI, and Python `Governance` class
+- **Policy engine** — six rule types (`DenyCapability`, `AllowCapability`,
+  `MaxRisk`, `RequireApproval`, `DenyIfCvssAbove`, `RequireApprovalIf`),
+  CVSS 4.0 / EPSS / CISA KEV aware.
+- **Approval workflow** — charter acceptance, scope allowlist, max-risk ceiling,
+  and explicit approval for destructive actions.
+- **Role-based access control** — `viewer`, `operator`, and `admin` with
+  least-privilege enforcement.
+- **Audit trail** — every decision recorded with rationale, exportable as JSON
+  or CSV.
+- **Reasoning traces** — per-phase explainability for autonomous agents.
+- **Evidence intelligence** — module output normalized, confidence-scored, and
+  provenance-tagged.
+- **Continuous validation** — monotonic policy versioning, drift detection, and
+  diff reporting.
+- **Multi-agent orchestration** — concurrent agents sharing one governed audit
+  trail.
+- **Interfaces** — interactive CLI (REPL) and a REST API with identical
+  governance semantics.
+- **SDKs** — Rust, a C ABI (`libicebox`), and a Python `Governance` class.
 
----
+## Installation
 
-## Quickstart (5 minutes)
+ICEBOX is distributed as a single static binary and a Python SDK.
 
-### Prerequisites
+### Binary
 
-- Rust toolchain (stable) — [rustup.rs](https://rustup.rs/)
-- (Optional) Ollama for agent features — [ollama.ai](https://ollama.ai/)
+```sh
+# One-liner (curl | sh)
+curl -sSfL https://raw.githubusercontent.com/Devaretanmay/icebox/main/dist/install.sh | sh
 
-### Build
+# From source
+cargo install icebox
 
-```bash
-git clone https://github.com/TBD/ICEBOX.git
-cd ICEBOX
-cargo build --release
-# 7 crates, ~14k LOC, compiles in ~2 minutes
+# Docker (GHCR)
+docker pull ghcr.io/devaretanmay/icebox:latest
+docker run --rm -p 8443:8443 ghcr.io/devaretanmay/icebox
 ```
 
-### Run the REPL
+> macOS: the release binary is not Apple-signed. On first-run Gatekeeper
+> blocks, clear the quarantine attribute with
+> `xattr -dr com.apple.quarantine "$(command -v icebox)"`.
+
+Homebrew packaging is planned.
+
+### Python SDK
+
+```sh
+pip install icebox-sdk
+```
+
+The Python SDK wraps the compiled `libicebox` C ABI via `ctypes`. If the native
+library is not present, build it with `cargo build` or set `ICEBOX_CAPI` to its
+path.
+
+## Quickstart
+
+### Build from source
 
 ```bash
-cargo run -p icebox-cli
+git clone https://github.com/Devaretanmay/icebox.git
+cd icebox
+cargo build --release
+```
+
+### Run the CLI and REST API
+
+```bash
+cargo run            # interactive REPL with REST API on :8443
+cargo run -- --api  # REST API only
 ```
 
 ```text
@@ -123,15 +134,7 @@ icebox> set project_dir /path/to/your/project
 icebox> run --approve /path/to/your/project
 ```
 
-### Start the REST API
-
-```bash
-cargo run -p icebox-cli -- --api
-```
-
-```text
-REST API http://127.0.0.1:8443/api/v1
-```
+The REST API is served at `http://127.0.0.1:8443/api/v1`:
 
 ```bash
 curl -X POST http://127.0.0.1:8443/api/v1/modules/vuln_scanner/run \
@@ -139,10 +142,10 @@ curl -X POST http://127.0.0.1:8443/api/v1/modules/vuln_scanner/run \
   -d '{"target": "/path/to/project", "approved": true}'
 ```
 
-### Use the Python SDK
+### Govern an agent with the Python SDK
 
 ```python
-from icebox_sdk import Governance
+from icebox import Governance
 
 gov = Governance({
     "charter": {"accepted": True, "engagement": "demo", "rules_of_engagement": []},
@@ -158,120 +161,103 @@ verdict = gov.run({
     "impact": "low",
     "destructive": False,
 })
-print(verdict)  # {"decision": "Allow", "reason": "All gates passed"}
+print(verdict)
 ```
 
-### Configure CVSS-Aware Policies
+### Configure CVSS-aware policy
 
 ```bash
-# Block any task with CVSS > 7.0
 icebox> policy rule add deny-cvss 7.0
-
-# Require approval if CVSS > 5.0 OR EPSS > 0.1 OR CVE is KEV
 icebox> policy rule add require-approval-if --cvss 5.0 --epss 0.1 --kev
 ```
 
----
-
-## Test Suite
-
-**72 tests, 0 failures.** Every merge is validated against real API calls to
-OSV.dev, FIRST EPSS, and the full governance seam.
-
-| Test Target | Tests | Status |
-|---|---|---|
-| `icebox-ai` (agent + orchestrator) | 6 | PASS |
-| `icebox-core` (lib unit tests) | 9 | PASS |
-| `icebox-core` (dogfooding E2E) | 31 | PASS |
-| `icebox-core` (evidence) | 3 | PASS |
-| `icebox-core` (governance) | 10 | PASS |
-| `icebox-modules` (lib) | 10 | PASS |
-| `icebox-modules` (eval) | 3 | PASS |
-| **Total** | **72** | **All passing** |
-
-```bash
-# Run the full suite
-cargo test --all
-```
-
----
-
-## SDK & Language Support
+## SDK and language support
 
 | SDK | Status | Usage |
-|---|---|---|
-| **Rust** (native) | Available | Direct via `icebox-core` |
-| **C ABI** | Available | `icebox_govern`, `icebox_check`, etc. via `icebox-capi` |
-| **Python** | Available | `Governance` class via ctypes |
+| --- | --- | --- |
+| Rust (native) | Available | `icebox` crate |
+| C ABI | Available | `libicebox` (`icebox_govern`, `icebox_check`, ...) |
+| Python | Available | `icebox.Governance` via ctypes |
 | TypeScript / Java / Go | Planned | Community contributions welcome |
 
----
+## Architecture
 
-## Repository Layout
+ICEBOX enforces governance at exactly one point: `ModuleExecutor::execute()`.
+Every operator action, REST call, and agent step passes through it, which is what
+makes the system auditable.
+
+- **Interfaces** — REPL CLI and Axum REST API on `127.0.0.1:8443/api/v1`, both
+  calling the same executor.
+- **Module executor** — resolves a module, runs the policy preflight, executes,
+  and records the outcome.
+- **Policy engine** — six rule types, CVSS 4.0 / EPSS / KEV aware.
+- **Approval engine** — a queue plus four safety gates (charter, scope,
+  max-risk, approval).
+- **Audit engine** — every decision normalized, scored, and provenance-tagged
+  as JSON and CSV.
+
+Modules register through the `#[module(...)]` proc macro (in `icebox-macro`)
+and are collected at compile time via `linkme` into `MODULE_REGISTRY`. The same
+registry feeds the CLI, the REST API, and the C ABI, so every surface governs
+identically.
+
+## Repository layout
 
 ```
-ICEBOX/
-├── Cargo.toml              # Workspace root (7 member crates)
-├── rust-toolchain.toml     # Stable Rust + clippy + rustfmt
+icebox/
+├── Cargo.toml              # Single package: lib (SDK) + cdylib (libicebox) + bin (CLI)
+├── src/
+│   ├── lib.rs              # Module declarations + MODULE_REGISTRY
+│   ├── main.rs             # CLI / REST API binary
+│   ├── capi.rs             # C ABI surface over the runtime
+│   ├── core/               # The seam: executor, policy, audit, evidence
+│   ├── modules/            # Example modules: vuln_scanner, recon, network
+│   ├── ai/                 # Autonomous agent + multi-agent orchestrator
+│   └── interfaces/         # REST API (Axum)
 ├── crates/
-│   ├── icebox-core/        # The seam: executor, policy, audit, evidence
-│   ├── icebox-modules/     # Example modules: vuln_scanner, recon, network
-│   ├── icebox-ai/          # Autonomous agent + multi-agent orchestrator
-│   ├── icebox-interfaces/  # REST API (Axum)
-│   ├── icebox-cli/         # Interactive REPL
-│   ├── icebox-capi/        # C ABI for SDK bindings
 │   └── icebox-macro/       # #[module(...)] attribute macro
 ├── python/
-│   ├── icebox_sdk.py       # Python SDK (ctypes)
+│   ├── icebox/             # Python SDK (ctypes)
 │   └── examples/
 │       └── governed_agent.py
-└── demos/
-    └── README.md
+├── dist/install.sh         # curl | sh installer
+├── Dockerfile              # GHCR image
+└── docs/                   # mdBook site
 ```
 
----
+## Policy rule reference
 
-## Policy Rule Reference
-
-| Rule | CLI Command | Effect |
-|---|---|---|
+| Rule | CLI command | Effect |
+| --- | --- | --- |
 | `DenyCapability` | `policy rule add deny network_scan` | Blocks specific capability |
 | `AllowCapability` | `policy rule add allow network_scan` | Pre-approves capability |
 | `MaxRisk` | `policy rule add maxrisk high` | Caps risk ceiling |
 | `RequireApproval` | *(via SDK builder)* | Gates capability + target pattern |
-| **`DenyIfCvssAbove`** | `policy rule add deny-cvss 7.0` | Blocks if CVSS > threshold |
-| **`RequireApprovalIf`** | `policy rule add require-approval-if --cvss 5.0 --epss 0.1 --kev` | Gates on CVSS/EPSS/KEV conditions |
+| `DenyIfCvssAbove` | `policy rule add deny-cvss 7.0` | Blocks if CVSS > threshold |
+| `RequireApprovalIf` | `policy rule add require-approval-if --cvss 5.0 --epss 0.1 --kev` | Gates on CVSS/EPSS/KEV conditions |
 
----
-
-## Dogfooding
+## Self-governance
 
 ICEBOX governs itself. The `governed_vuln_scan_blocks_high_cvss_exploit` test
-runs the `vuln_scanner` module against ICEBOX's own source code through the
-governance seam, extracts real CVSS scores from OSV.dev, and verifies that
+runs the `vuln_scanner` module against ICEBOX's own source tree through the
+governance seam, resolves real CVSS scores from OSV.dev, and verifies that
 `DenyIfCvssAbove(7.0)` blocks hypothetical exploitation of high-CVSS findings.
 
-```text
-[dogfood] vuln_scanner scanned ICEBOX project: 176 deps, 0 CVEs found
-[dogfood] no real CVEs found, using synthetic CVSS 9.5 for policy test
-test governed_vuln_scan_blocks_high_cvss_exploit ... ok
-```
+## Documentation
 
----
+Full documentation, including SDK references and deployment guidance, is
+published at [https://devaretanmay.github.io/icebox/](https://devaretanmay.github.io/icebox/).
 
-## License & Contributing
+## Security
 
-- **License:** MIT
-- **Contributions welcome!** See [CONTRIBUTING.md](CONTRIBUTING.md)
-- **Vulnerability disclosure:** See [SECURITY.md](SECURITY.md)
+Please report vulnerabilities privately. See
+[SECURITY.md](SECURITY.md) for the disclosure process.
 
----
+## Contributing
 
-## Status
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for
+guidelines.
 
-ICEBOX has completed its MVP (Phases 1–3) and is transitioning to community
-validation. The architecture is stable, the test suite is comprehensive, and the
-core thesis — **runtime governance for autonomous offensive security** — is
-ready for real-world feedback.
+## License
 
-**Current phase:** Open-source release, user validation, design partner program.
+ICEBOX is released under the [MIT License](LICENSE).

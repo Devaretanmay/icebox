@@ -1,47 +1,49 @@
+[package]
+name = "icebox"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Runtime governance for autonomous offensive security — the single seam every human operator, REST client, and LLM agent must pass through before anything touches a target."
+repository = "https://github.com/Devaretanmay/icebox"
+homepage = "https://github.com/Devaretanmay/icebox"
+readme = "README.md"
+keywords = ["security", "governance", "offensive-security", "agent", "policy", "sdk"]
+categories = ["command-line-utilities", "authentication"]
+
+[lib]
+name = "icebox"
+crate-type = ["rlib", "cdylib"]
+
+[[bin]]
+name = "icebox"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1.52", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+linkme = "0.3"
+async-trait = "0.1"
+ipnet = "2"
+sha1 = "0.10"
+md5 = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+hex = "0.4"
+base64 = "0.22"
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors"] }
+icebox-macro = { path = "crates/icebox-macro", version = "0.1.0" }
+
 [workspace]
-resolver = "2"
-members = [
-    "crates/icebox-cli",
-    "crates/icebox-core",
-    "crates/icebox-modules",
-    "crates/icebox-interfaces",
-    "crates/icebox-ai",
-    "crates/icebox-capi",
-    "crates/icebox-macro",
-]
+members = ["crates/icebox-macro"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/TBD/ICEBOX"
-
-[workspace.dependencies]
-sha1 = "0.10"
-md5 = "0.8"
-# Async runtime + networking
-tokio = { version = "1.52", features = ["full"] }
-# Serialization
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-# Errors / logging
-thiserror = "2"
-anyhow = "1"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-# Module system
-linkme = "0.3"
-async-trait = "0.1"
-# CLI
-reedline = "0.38"
-# HTTP / REST API
-axum = "0.8"
-tower = "0.5"
-tower-http = { version = "0.6", features = ["cors"] }
-uuid = { version = "1", features = ["v4"] }
-# AI / HTTP client
-reqwest = { version = "0.12", features = ["json"] }
-# Data encoding
-hex = "0.4"
-base64 = "0.22"
-ipnet = "2"
+repository = "https://github.com/Devaretanmay/icebox"
