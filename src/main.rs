@@ -22,7 +22,22 @@ struct CliState {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let api_only = std::env::args().any(|a| a == "--api");
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("icebox {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        println!("ICEBOX - governance kernel for security tooling");
+        println!();
+        println!("USAGE:");
+        println!("  icebox            Start interactive REPL + REST API (http://127.0.0.1:8443)");
+        println!("  icebox --api     Start the REST API only");
+        println!("  icebox --version  Print version and exit");
+        println!("  icebox --help     Show this help and exit");
+        return Ok(());
+    }
+    let api_only = args.iter().any(|a| a == "--api");
     let fw = new_shared_framework(ModuleExecutor::new(
         Charter::default(),
         ScopeManager::default(),
@@ -138,7 +153,11 @@ fn cmd_use(a: &[&str], s: &mut CliState, fw: &Framework) {
                 false,
                 PolicyContext::Cli,
             );
-            println!("loaded {} (in-scope: {})", l.info.name, pf.in_scope);
+            let scope_note = match &s.target {
+                Some(_) => format!("in-scope: {}", pf.in_scope),
+                None => "in-scope: n/a (set a target with `run <target>`)".to_string(),
+            };
+            println!("loaded {} ({})", l.info.name, scope_note);
             s.loaded = Some(l);
         }
         None => println!("not found: {n}"),

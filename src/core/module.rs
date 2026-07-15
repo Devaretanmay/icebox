@@ -36,7 +36,7 @@ impl ModuleKind {
 
 /// Policy reasons over these instead of raw module kind so risk follows
 /// behavior, not label.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Capability {
     NetworkScan,
@@ -47,6 +47,13 @@ pub enum Capability {
     DataCollection,
     FilesystemModification,
     CloudEnumeration,
+}
+
+impl<'de> Deserialize<'de> for Capability {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        s.parse::<Capability>().map_err(serde::de::Error::custom)
+    }
 }
 
 impl Capability {
@@ -116,7 +123,8 @@ impl std::str::FromStr for Capability {
             "privilegeescalation" | "privilege_escalation" => Capability::PrivilegeEscalation,
             "persistence" => Capability::Persistence,
             "lateralmovement" | "lateral_movement" => Capability::LateralMovement,
-            "datacollection" | "data_collection" => Capability::DataCollection,
+            "datacollection" | "data_collection" | "data_exfiltration" | "exfiltration"
+            | "exfil" => Capability::DataCollection,
             "filesystemmodification" | "filesystem_modification" => {
                 Capability::FilesystemModification
             }
@@ -240,4 +248,62 @@ pub struct ModuleEntry {
 pub struct LoadedModule {
     pub info: ModuleInfo,
     pub module: Box<dyn Module>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::str::FromStr;
+
+    #[test]
+    fn capability_from_str_accepts_aliases() {
+        assert_eq!(
+            Capability::from_str("data_exfiltration").unwrap(),
+            Capability::DataCollection
+        );
+        assert_eq!(
+            "exfiltration".parse::<Capability>().unwrap(),
+            Capability::DataCollection
+        );
+        assert_eq!(
+            "exfil".parse::<Capability>().unwrap(),
+            Capability::DataCollection
+        );
+        assert_eq!(
+            "DataCollection".parse::<Capability>().unwrap(),
+            Capability::DataCollection
+        );
+        assert_eq!(
+            "data_collection".parse::<Capability>().unwrap(),
+            Capability::DataCollection
+        );
+        assert!("reverse_shell".parse::<Capability>().is_err());
+    }
+
+    #[test]
+    fn capability_deserialize_accepts_aliases() {
+        let c: Capability = serde_json::from_value(json!("data_exfiltration")).unwrap();
+        assert_eq!(c, Capability::DataCollection);
+        let c: Capability = serde_json::from_value(json!("exfil")).unwrap();
+        assert_eq!(c, Capability::DataCollection);
+        let c: Capability = serde_json::from_value(json!("data_collection")).unwrap();
+        assert_eq!(c, Capability::DataCollection);
+    }
+
+    #[test]
+    fn taskspec_deserialize_alias_and_bare_cvss() {
+        use crate::core::sdk::TaskSpec;
+        let t: TaskSpec = serde_json::from_value(json!({
+            "name": "x",
+            "target": "10.0.0.5",
+            "capabilities": ["data_exfiltration"],
+            "impact": "medium",
+            "destructive": false,
+            "cvss": 9.5
+        }))
+        .unwrap();
+        assert_eq!(t.capabilities[0], Capability::DataCollection);
+        assert_eq!(t.cvss.unwrap().effective_score(), 9.5);
+    }
 }

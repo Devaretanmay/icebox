@@ -5,9 +5,7 @@ import glob
 import json
 import os
 
-# When installed from a wheel, setuptools-rust compiles the cdylib next to
-# this package as ``icebox/_native.*``. Prefer that; otherwise fall back to
-# a local ``cargo build`` output for in-repo development.
+# Loads libicebox from a wheel build, a cargo target dir, or ICEBOX_CAPI.
 _PKG_DIR = os.path.dirname(os.path.abspath(__file__))
 _NATIVE = next(
     iter(glob.glob(os.path.join(_PKG_DIR, "_native.*"))), None
@@ -79,8 +77,6 @@ def _read_string(ptr):
 
 
 class Governance:
-    """A governed runtime driven through the C ABI."""
-
     def __init__(self, config: dict):
         cfg = json.dumps(config).encode()
         self.handle = _lib.icebox_govern(cfg)
@@ -88,12 +84,10 @@ class Governance:
             raise ValueError("icebox_govern failed: invalid config")
 
     def check(self, task: dict) -> dict:
-        """Supervised evaluation. Approval-gated tasks return ``NeedsApproval``."""
         raw = _read_string(_lib.icebox_check(self.handle, json.dumps(task).encode()))
         return json.loads(raw) if raw else {}
 
     def run(self, task: dict) -> dict:
-        """Unsupervised evaluation. Approval-gated tasks are auto-granted."""
         raw = _read_string(_lib.icebox_check_auto(self.handle, json.dumps(task).encode()))
         return json.loads(raw) if raw else {}
 

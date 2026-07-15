@@ -44,6 +44,10 @@ async fn main() {
 }
 ```
 
+Set a CVSS score with `cvss: Some(CvssScore::from_score(9.5))` (or the
+structured form `CvssScore { cvss_v31: Some(9.5), epss: Some(0.9), kev: true, ..Default::default() }`)
+so `deny_if_cvss_above` policies can act on it. See `examples/govern_demo.rs`.
+
 `GovernanceRuntime` is the in-process equivalent of the CLI seam. Use it
 to wrap any tool — Rust or otherwise — behind the same policy, approval,
 and audit gates.

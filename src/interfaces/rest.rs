@@ -140,21 +140,8 @@ struct JobItem {
 
 #[derive(Deserialize)]
 struct PolicyQuery {
-    module: String,
+    module: Option<String>,
     target: Option<String>,
-}
-
-#[derive(Serialize)]
-struct PolicyEvaluation {
-    module: String,
-    target: String,
-    capabilities: Vec<String>,
-    intents: Vec<String>,
-    impact: String,
-    decision: String,
-    reason: Option<String>,
-    in_scope: bool,
-    charter_accepted: bool,
 }
 
 #[derive(Deserialize)]
@@ -545,20 +532,24 @@ async fn add_scope(
 async fn evaluate_policy(
     State(fw): State<SharedFramework>,
     Query(params): Query<PolicyQuery>,
-) -> Json<PolicyEvaluation> {
+) -> Json<serde_json::Value> {
     let fw = fw.lock().await;
-    let Some(loaded) = crate::modules::load(&params.module) else {
-        return Json(PolicyEvaluation {
-            module: params.module,
-            target: params.target.unwrap_or_default(),
-            capabilities: vec![],
-            intents: vec![],
-            impact: "none".into(),
-            decision: "deny".into(),
-            reason: Some("module not found".into()),
-            in_scope: false,
-            charter_accepted: fw.executor.charter.accepted,
-        });
+    // No module -> return the active policy set itself.
+    let module = params.module.clone().unwrap_or_default();
+    if module.is_empty() {
+        return Json(
+            serde_json::to_value(&fw.executor.policy_set).unwrap_or(serde_json::Value::Null),
+        );
+    }
+    let Some(loaded) = crate::modules::load(&module) else {
+        return Json(serde_json::json!({
+            "module": module,
+            "target": params.target.unwrap_or_default(),
+            "decision": "deny",
+            "reason": "module not found",
+            "in_scope": false,
+            "charter_accepted": fw.executor.charter.accepted,
+        }));
     };
     let target = params.target.unwrap_or_default();
     let pf = fw
@@ -566,26 +557,21 @@ async fn evaluate_policy(
         .preflight(&loaded, &target, None, false, PolicyContext::Rest);
     let policy = fw.executor.policy(PolicyContext::Rest);
     let decision = policy.evaluate(&pf.to_request());
-    Json(PolicyEvaluation {
-        module: loaded.info.name.clone(),
-        target,
-        capabilities: pf.capabilities.iter().map(|c| c.as_str().into()).collect(),
-        intents: pf
-            .capabilities
-            .iter()
-            .map(|c| c.intent().as_str().into())
-            .collect(),
-        impact: pf.risk.as_str().into(),
-        decision: match &decision {
+    Json(serde_json::json!({
+        "module": loaded.info.name,
+        "target": target,
+        "capabilities": pf.capabilities.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
+        "intents": pf.capabilities.iter().map(|c| c.intent().as_str()).collect::<Vec<_>>(),
+        "impact": pf.risk.as_str(),
+        "decision": match &decision {
             PolicyDecision::Allow => "allow",
             PolicyDecision::RequireApproval(_) => "require_approval",
             PolicyDecision::Deny(_) => "deny",
-        }
-        .into(),
-        reason: decision.reason().map(|s| s.to_string()),
-        in_scope: pf.in_scope,
-        charter_accepted: pf.charter_accepted,
-    })
+        },
+        "reason": decision.reason().map(|s| s.to_string()),
+        "in_scope": pf.in_scope,
+        "charter_accepted": pf.charter_accepted,
+    }))
 }
 
 async fn list_audit(

@@ -397,13 +397,15 @@ fn approval_queue_handles_bulk() {
     let mut q = ApprovalQueue::default();
     let count = 150;
 
+    let mut ids = Vec::with_capacity(count);
     for i in 0..count {
-        q.request(
+        let req = q.request(
             format!("module_{i}"),
             format!("10.0.0.{}", i % 254 + 1),
             format!("reason {i}"),
             HashMap::new(),
         );
+        ids.push(req);
     }
 
     let all = q.list();
@@ -420,11 +422,11 @@ fn approval_queue_handles_bulk() {
         "all requests must be pending initially"
     );
 
-    for i in 0..count {
+    for (i, id) in ids.iter().enumerate() {
         if i % 2 == 0 {
-            assert!(q.approve(i as u64), "must be able to approve request {i}");
+            assert!(q.approve(*id), "must be able to approve request {id}");
         } else {
-            assert!(q.deny(i as u64), "must be able to deny request {i}");
+            assert!(q.deny(*id), "must be able to deny request {id}");
         }
     }
 

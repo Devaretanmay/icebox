@@ -46,4 +46,8 @@ The task object requires `name`, `target`, `capabilities`, `impact`, and
   "impact": "low",
   "destructive": false,
   "options": { "host": "10.0.0.5", "ports": "1-1024" } }
+
+The `cvss` field is optional and may be a bare number (`"cvss": 9.5`) or a
+structured object (`"cvss": {"cvss_v31": 9.5, "epss": 0.9, "kev": true}`).
+Policies such as `deny_if_cvss_above` consult it.
 ```

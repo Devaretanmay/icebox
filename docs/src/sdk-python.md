@@ -43,6 +43,38 @@ print(gov.audit_json())    # full audit log as JSON
 print(gov.audit_csv())     # same, as CSV
 ```
 
+## Risk / CVSS gating
+
+A task may carry a CVSS score, which policies like `deny_if_cvss_above`
+consult. The `cvss` field accepts either a bare number or an object:
+
+```python
+task = {
+    "name": "exploit",
+    "target": "10.0.0.5",
+    "capabilities": ["privilege_escalation"],
+    "impact": "high",
+    "destructive": False,
+    "cvss": 9.5,            # a bare number...
+    # ...or the structured form (epss/kev enrich the weighted risk):
+    # "cvss": {"cvss_v31": 9.5, "epss": 0.9, "kev": True},
+}
+```
+
+Pair it with a policy that blocks high scores:
+
+```python
+gov = Governance({
+    "charter": {"accepted": True, "engagement": "demo", "rules_of_engagement": []},
+    "scope": {"allow": ["10.0.0.0/8"]},
+    "max_risk": "critical",
+    "role": "admin",
+    "policy_set": {"rules": [{"deny_if_cvss_above": 7.0}], "version": 1},
+})
+print(gov.check(task))
+# {'Blocked': {'reason': 'CVSS score 9.5 exceeds deny threshold 7.0', ...}}
+```
+
 ## API
 
 | Method | Purpose |

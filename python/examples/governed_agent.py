@@ -26,7 +26,10 @@ def main():
         "max_risk": "critical",
         "role": "admin",
         "policy_set": {
-            "rules": [{"deny_capability": "persistence"}],
+            "rules": [
+                {"deny_capability": "persistence"},
+                {"deny_if_cvss_above": 7.0},
+            ],
             "version": 1,
         },
         "rate_limits": {},
@@ -75,6 +78,18 @@ def main():
     # out-of-scope is blocked
     off_scope = dict(scan, target="8.8.8.8")
     print("off-scope verdict:", gov.check(off_scope))
+
+    # high-CVSS exploit is blocked by the deny_if_cvss_above(7.0) rule.
+    # `cvss` may be a bare number or an object {"cvss_v31": ..., "epss": ..., "kev": ...}.
+    exploit = {
+        "name": "exploit",
+        "target": "10.0.0.6",
+        "capabilities": ["privilege_escalation"],
+        "impact": "high",
+        "destructive": False,
+        "cvss": 9.5,
+    }
+    print("exploit verdict:", gov.check(exploit))
 
     # full audit trail
     print("audit json:")

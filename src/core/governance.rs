@@ -91,10 +91,19 @@ pub struct ApprovalRequest {
     pub status: ApprovalStatus,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ApprovalQueue {
     items: Vec<ApprovalRequest>,
     next_id: u64,
+}
+
+impl Default for ApprovalQueue {
+    fn default() -> Self {
+        ApprovalQueue {
+            items: Vec::new(),
+            next_id: 1,
+        }
+    }
 }
 
 impl ApprovalQueue {

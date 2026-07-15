@@ -1,6 +1,8 @@
+use serde::de::{Deserializer, MapAccess, Visitor};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::net::Ipv4Addr;
+use std::fmt;
+use std::net::{Ipv4Addr, Ipv6Addr, ToSocketAddrs};
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -54,12 +56,88 @@ impl std::str::FromStr for RiskLevel {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CvssScore {
     pub cvss_v31: Option<f64>,
     pub cvss_v40: Option<f64>,
     pub epss: Option<f64>,
     pub kev: bool,
+}
+
+impl<'de> Deserialize<'de> for CvssScore {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "snake_case")]
+        enum Field {
+            CvssV31,
+            CvssV40,
+            Epss,
+            Kev,
+        }
+
+        struct CvssVisitor;
+
+        impl<'de> Visitor<'de> for CvssVisitor {
+            type Value = CvssScore;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a CVSS score (number) or an object {cvss_v31, cvss_v40, epss, kev}")
+            }
+
+            fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<Self::Value, E> {
+                Ok(CvssScore {
+                    cvss_v31: Some(v),
+                    cvss_v40: None,
+                    epss: None,
+                    kev: false,
+                })
+            }
+
+            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<Self::Value, E> {
+                Ok(CvssScore {
+                    cvss_v31: Some(v as f64),
+                    cvss_v40: None,
+                    epss: None,
+                    kev: false,
+                })
+            }
+
+            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(CvssScore {
+                    cvss_v31: Some(v as f64),
+                    cvss_v40: None,
+                    epss: None,
+                    kev: false,
+                })
+            }
+
+            fn visit_map<M: MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {
+                let mut cvss_v31 = None;
+                let mut cvss_v40 = None;
+                let mut epss = None;
+                let mut kev = false;
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::CvssV31 => cvss_v31 = map.next_value()?,
+                        Field::CvssV40 => cvss_v40 = map.next_value()?,
+                        Field::Epss => epss = map.next_value()?,
+                        Field::Kev => kev = map.next_value()?,
+                    }
+                }
+                Ok(CvssScore {
+                    cvss_v31,
+                    cvss_v40,
+                    epss,
+                    kev,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(CvssVisitor)
+    }
 }
 
 impl CvssScore {
@@ -142,11 +220,13 @@ impl ScopeManager {
 
     pub fn is_in_scope(&self, target: &str) -> bool {
         let target = target.trim();
-        for entry in &self.allow {
-            let entry = entry.trim();
+        let target_ips = resolve_ips(target);
+        for raw in &self.allow {
+            let entry = raw.trim();
             if entry.is_empty() {
                 continue;
             }
+            // exact / wildcard / CIDR against the literal target
             if entry == target {
                 return true;
             }
@@ -158,9 +238,54 @@ impl ScopeManager {
             if entry.contains('/') && ipv4_in_cidr(target, entry) {
                 return true;
             }
+            // exact / CIDR against the target's resolved IPs
+            for tip in &target_ips {
+                if entry == tip {
+                    return true;
+                }
+                if entry.contains('/') && ipv4_in_cidr(tip, entry) {
+                    return true;
+                }
+            }
+            // if the scope entry itself is a hostname, resolve it and compare
+            if !is_literal_or_pattern(entry) {
+                for eip in resolve_ips(entry) {
+                    if eip == target {
+                        return true;
+                    }
+                    for tip in &target_ips {
+                        if eip == *tip {
+                            return true;
+                        }
+                    }
+                }
+            }
         }
         false
     }
+}
+
+/// Resolve a hostname to its IP strings. An already-literal IP is returned
+/// unchanged (no DNS). Used so that scoping `127.0.0.1` also admits a
+/// `localhost` target (and vice versa).
+fn resolve_ips(host: &str) -> Vec<String> {
+    if host.parse::<Ipv4Addr>().is_ok() || host.parse::<Ipv6Addr>().is_ok() {
+        return vec![host.to_string()];
+    }
+    let mut ips = Vec::new();
+    if let Ok(addrs) = format!("{host}:0").to_socket_addrs() {
+        for a in addrs {
+            ips.push(a.ip().to_string());
+        }
+    }
+    ips
+}
+
+fn is_literal_or_pattern(entry: &str) -> bool {
+    if entry.contains('/') || entry.ends_with('*') {
+        return true;
+    }
+    entry.parse::<Ipv4Addr>().is_ok() || entry.parse::<Ipv6Addr>().is_ok()
 }
 
 fn ipv4_in_cidr(target: &str, cidr: &str) -> bool {
