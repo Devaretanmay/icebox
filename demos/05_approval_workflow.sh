@@ -59,7 +59,7 @@ echo -e "${YELLOW}Press ENTER to set up governance...${NC}"
 read -r
 
 printf "charter accept approval-demo\nscope add 10.0.0.0/8\nrole --set admin\npolicy rule add deny-cvss 9.0\npolicy rules\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "${YELLOW}Press ENTER to continue...${NC}"
@@ -85,7 +85,7 @@ echo -e "${YELLOW}Press ENTER to create the approval request...${NC}"
 read -r
 
 printf "charter accept approval-demo\nscope add 10.0.0.0/8\napprove request reverse_shell_payload 10.0.0.5 --reason \"Need reverse shell for post-exploitation validation\" --set lhost 10.0.0.5 --set lport 4444\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "  ${GREEN}✓ Approval request created.${NC}"
@@ -109,7 +109,7 @@ echo -e "${YELLOW}Press ENTER to list pending requests...${NC}"
 read -r
 
 printf "charter accept approval-demo\nscope add 10.0.0.0/8\napprove request reverse_shell_payload 10.0.0.5 --reason \"Need reverse shell for post-exploitation\" --set lhost 10.0.0.5 --set lport 4444\napprove list\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "${YELLOW}Press ENTER to continue...${NC}"
@@ -133,7 +133,7 @@ echo -e "${YELLOW}Press ENTER to approve and execute...${NC}"
 read -r
 
 printf "charter accept approval-demo\nscope add 10.0.0.0/8\napprove request reverse_shell_payload 10.0.0.5 --reason \"Need reverse shell for post-exploitation\" --set lhost 10.0.0.5 --set lport 4444\napprove approve 1\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "  ${GREEN}✓ Request approved and module executed.${NC}"
@@ -159,7 +159,7 @@ echo -e "${YELLOW}Press ENTER to create the second request...${NC}"
 read -r
 
 printf "charter accept approval-demo\nscope add 10.0.0.0/8\napprove request tcp_port_scanner 10.0.0.99 --reason \"Unauthorized target — should be denied\" --set host 10.0.0.99 --set ports 22,80,443\napprove list\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "${YELLOW}Press ENTER to deny the request...${NC}"
@@ -170,7 +170,7 @@ echo -e "  ${CYAN}→${NC} approve deny 2"
 echo ""
 
 printf "charter accept approval-demo\nscope add 10.0.0.0/8\napprove request tcp_port_scanner 10.0.0.99 --reason \"Unauthorized target — should be denied\" --set host 10.0.0.99 --set ports 22,80,443\napprove deny 2\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "  ${RED}✗ Request #2 denied — execution blocked.${NC}"
@@ -195,7 +195,7 @@ echo -e "${YELLOW}Press ENTER to view the audit trail...${NC}"
 read -r
 
 printf "charter accept approval-demo\nscope add 10.0.0.0/8\napprove request reverse_shell_payload 10.0.0.5 --reason \"Need reverse shell\" --set lhost 10.0.0.5 --set lport 4444\napprove approve 1\napprove request tcp_port_scanner 10.0.0.99 --reason \"Unauthorized target\" --set host 10.0.0.99 --set ports 22,80,443\napprove deny 2\naudit 50\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "${YELLOW}Press ENTER to continue...${NC}"
@@ -218,7 +218,7 @@ echo -e "${YELLOW}Press ENTER to view evidence...${NC}"
 read -r
 
 printf "charter accept approval-demo\nscope add 10.0.0.0/8\napprove request reverse_shell_payload 10.0.0.5 --reason \"Need reverse shell\" --set lhost 10.0.0.5 --set lport 4444\napprove approve 1\nevidence 20\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "${YELLOW}Press ENTER to continue...${NC}"
@@ -242,7 +242,7 @@ echo -e "${YELLOW}Press ENTER to export...${NC}"
 read -r
 
 printf "charter accept approval-demo\nscope add 10.0.0.0/8\napprove request reverse_shell_payload 10.0.0.5 --reason \"Need reverse shell\" --set lhost 10.0.0.5 --set lport 4444\napprove approve 1\naudit export --format csv --out /tmp/icebox_approval_audit.csv\naudit export --format json --out /tmp/icebox_approval_audit.json\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo -e "${GREEN}${BOLD}  Approval audit exported:${NC}"
 echo -e "  • /tmp/icebox_approval_audit.csv"

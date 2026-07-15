@@ -80,7 +80,7 @@ echo -e "${YELLOW}Press ENTER to set up baseline...${NC}"
 read -r
 
 printf "charter accept validation-demo\nscope add 10.0.0.0/8\nrole --set admin\npolicy rules\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "${YELLOW}Press ENTER to continue...${NC}"
@@ -104,7 +104,7 @@ echo -e "${YELLOW}Press ENTER to add rules...${NC}"
 read -r
 
 printf "charter accept validation-demo\nscope add 10.0.0.0/8\npolicy rule add maxrisk high\npolicy rule add deny-cvss 7.0\npolicy rules\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "${YELLOW}Press ENTER to continue...${NC}"
@@ -126,7 +126,7 @@ echo -e "${YELLOW}Press ENTER to save snapshot...${NC}"
 read -r
 
 printf "charter accept validation-demo\nscope add 10.0.0.0/8\npolicy rule add maxrisk high\npolicy rule add deny-cvss 7.0\nsave /tmp/icebox_baseline.json\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "${GREEN}${BOLD}  Baseline snapshot saved to /tmp/icebox_baseline.json${NC}"
@@ -179,7 +179,7 @@ echo -e "${YELLOW}Press ENTER to modify policy and save...${NC}"
 read -r
 
 printf "charter accept validation-demo\nscope add 10.0.0.0/8\npolicy rule add maxrisk high\npolicy rule add deny-cvss 7.0\npolicy rule remove 0\npolicy rule add deny credential_access\npolicy rules\nsave /tmp/icebox_modified.json\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "${GREEN}${BOLD}  Modified snapshot saved to /tmp/icebox_modified.json${NC}"
@@ -257,18 +257,18 @@ if [ "$OLLAMA_AVAILABLE" = true ]; then
     # Run first validation with baseline policy
     echo -e "  ${CYAN}→${NC} validate run --targets 10.0.0.5 --out /tmp/icebox_report_a.json"
     printf "charter accept validation-demo\nscope add 10.0.0.0/8\npolicy rule add maxrisk high\npolicy rule add deny-cvss 7.0\nvalidate run --targets 10.0.0.5 --out /tmp/icebox_report_a.json\nexit\n" \
-        | cargo run -p icebox-cli 2>/dev/null
+        | cargo run 2>/dev/null
 
     # Run second validation with modified policy
     echo -e "  ${CYAN}→${NC} validate run --targets 10.0.0.5 --out /tmp/icebox_report_b.json"
     printf "charter accept validation-demo\nscope add 10.0.0.0/8\npolicy rule add maxrisk high\npolicy rule add deny-cvss 7.0\npolicy rule remove 0\npolicy rule add deny credential_access\nvalidate run --targets 10.0.0.5 --out /tmp/icebox_report_b.json\nexit\n" \
-        | cargo run -p icebox-cli 2>/dev/null
+        | cargo run 2>/dev/null
 
     # Now diff the two reports
     echo ""
     echo -e "  ${CYAN}→${NC} validate diff /tmp/icebox_report_a.json /tmp/icebox_report_b.json"
     printf "validate diff /tmp/icebox_report_a.json /tmp/icebox_report_b.json\n" \
-        | cargo run -p icebox-cli 2>/dev/null
+        | cargo run 2>/dev/null
 
 else
     echo -e "${YELLOW}  (Showing drift detection concepts — install Ollama for live demo)${NC}"

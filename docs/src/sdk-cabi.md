@@ -31,13 +31,19 @@ cargo build --release     # -> target/release/libicebox.{so,dylib,dll}
 ## Config / task shape
 
 ```json
-{ "charter": "authorized engagement",
-  "scope": ["10.0.0.0/24"],
+{ "charter": {"accepted": true, "engagement": "demo", "rules_of_engagement": []},
+  "scope": {"allow": ["10.0.0.0/24"]},
   "max_risk": "high" }
 ```
 
+The task object requires `name`, `target`, `capabilities`, `impact`, and
+`destructive`; `options` is a string-to-string map passed through to the module.
+
 ```json
-{ "module": "tcp_port_scanner",
+{ "name": "scan",
   "target": "10.0.0.5",
+  "capabilities": ["network_scan"],
+  "impact": "low",
+  "destructive": false,
   "options": { "host": "10.0.0.5", "ports": "1-1024" } }
 ```

@@ -72,7 +72,7 @@ echo -e "${YELLOW}Press ENTER to set up governance...${NC}"
 read -r
 
 printf "charter accept multi-agent-pentest\nscope add 10.0.0.0/8\nscope add 192.168.1.0/24\nrole --set admin\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "${YELLOW}Press ENTER to continue...${NC}"
@@ -94,7 +94,7 @@ echo -e "  ${CYAN}→${NC} policy rule add maxrisk high"
 echo ""
 
 printf "charter accept multi-agent-pentest\nscope add 10.0.0.0/8\npolicy rule add deny-cvss 7.0\npolicy rule add deny credential_access\npolicy rule add maxrisk high\npolicy rules\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "${YELLOW}Press ENTER to continue to the campaign...${NC}"
@@ -119,7 +119,7 @@ if [ "$OLLAMA_AVAILABLE" = true ]; then
     read -r
 
     printf "charter accept multi-agent-pentest\nscope add 10.0.0.0/8\nscope add 192.168.1.0/24\ncampaign 10.0.0.5 192.168.1.100 approve\nexit\n" \
-        | cargo run -p icebox-cli 2>/dev/null
+        | cargo run 2>/dev/null
 else
     echo -e "${YELLOW}  (Ollama not available — showing campaign structure)${NC}"
     echo ""
@@ -149,7 +149,7 @@ echo ""
 
 if [ "$OLLAMA_AVAILABLE" = true ]; then
     printf "charter accept multi-agent-pentest\nscope add 10.0.0.0/8\ncampaign 10.0.0.5 192.168.1.100 approve\naudit 50\nexit\n" \
-        | cargo run -p icebox-cli 2>/dev/null
+        | cargo run 2>/dev/null
 else
     echo -e "${YELLOW}  (Simulated audit output)${NC}"
     echo ""
@@ -183,7 +183,7 @@ echo ""
 
 if [ "$OLLAMA_AVAILABLE" = true ]; then
     printf "charter accept multi-agent-pentest\nscope add 10.0.0.0/8\ncampaign 10.0.0.5 192.168.1.100 approve\ntraces 20\nexit\n" \
-        | cargo run -p icebox-cli 2>/dev/null
+        | cargo run 2>/dev/null
 else
     echo -e "${YELLOW}  (Simulated traces output)${NC}"
     echo ""
@@ -212,7 +212,7 @@ echo -e "  ${CYAN}→${NC} audit export --format json --out /tmp/icebox_campaign
 echo ""
 
 printf "charter accept multi-agent-pentest\nscope add 10.0.0.0/8\naudit export --format csv --out /tmp/icebox_campaign_audit.csv\naudit export --format json --out /tmp/icebox_campaign_audit.json\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo -e "${GREEN}${BOLD}  Compliance artifacts exported:${NC}"
 echo -e "  • /tmp/icebox_campaign_audit.csv"

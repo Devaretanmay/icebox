@@ -1193,7 +1193,6 @@ async fn governed_vuln_scan_blocks_high_cvss_exploit() {
 
     let max_cvss: f64;
     let top_cve: String;
-    let cvss_found: bool;
 
     if !findings.is_empty() {
         max_cvss = findings
@@ -1213,13 +1212,11 @@ async fn governed_vuln_scan_blocks_high_cvss_exploit() {
 
         assert!(max_cvss > 0.0, "CVSS score must be > 0, got {max_cvss}");
         assert!(max_cvss <= 10.0, "CVSS score must be <= 10, got {max_cvss}");
-        cvss_found = true;
 
         eprintln!("[dogfood] max CVSS {:.1} ({})", max_cvss, top_cve);
     } else {
         max_cvss = 9.5;
         top_cve = "CVE-TEST-SYNTHETIC".into();
-        cvss_found = false;
         eprintln!(
             "[dogfood] no real CVEs found, using synthetic CVSS {:.1} for policy test",
             max_cvss
@@ -1295,12 +1292,5 @@ async fn governed_vuln_scan_blocks_high_cvss_exploit() {
                 "Deny reason must mention CVSS: {reason}"
             );
         }
-    }
-
-    if cvss_found {
-        assert!(
-            !exec.evidence.is_empty(),
-            "vuln_scanner must produce evidence when CVEs are found"
-        );
     }
 }

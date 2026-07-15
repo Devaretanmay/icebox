@@ -16,17 +16,20 @@ native lib is not found, build it (`cargo build`) or set
 
 ```python
 from icebox import Governance
-import json
 
 gov = Governance({
-    "charter": "authorized engagement",
-    "scope": ["10.0.0.0/24"],
+    "charter": {"accepted": True, "engagement": "demo", "rules_of_engagement": []},
+    "scope": {"allow": ["10.0.0.0/24"]},
     "max_risk": "high",
+    "role": "admin",
 })
 
 task = {
-    "module": "tcp_port_scanner",
+    "name": "scan",
     "target": "10.0.0.5",
+    "capabilities": ["network_scan"],
+    "impact": "low",
+    "destructive": False,
     "options": {"host": "10.0.0.5", "ports": "1-1024"},
 }
 
@@ -35,7 +38,7 @@ outcome = gov.check(task)
 # Unsupervised: approval-gated tasks are auto-granted.
 outcome = gov.run(task)
 
-print(outcome)              # decision, audit trail, evidence
+print(outcome)              # e.g. {"Allowed": {"result": null, "decision_id": 1}}
 print(gov.audit_json())    # full audit log as JSON
 print(gov.audit_csv())     # same, as CSV
 ```

@@ -58,7 +58,7 @@ echo -e "${YELLOW}Press ENTER to execute governance setup + module load...${NC}"
 read -r
 
 printf "charter accept pentest-2026-demo\nscope add %s\nlist\nuse vuln_scanner\nset project_dir %s\ninfo\n" \
-    "$PROJECT_ROOT" "$PROJECT_ROOT" | cargo run -p icebox-cli 2>/dev/null
+    "$PROJECT_ROOT" "$PROJECT_ROOT" | cargo run 2>/dev/null
 
 echo ""
 echo -e "${YELLOW}Press ENTER to continue to the vulnerability scan...${NC}"
@@ -83,7 +83,7 @@ echo -e "${YELLOW}Press ENTER to run the vuln_scanner...${NC}"
 read -r
 
 printf "use vuln_scanner\nset project_dir %s\nrun --approve %s\nexit\n" \
-    "$PROJECT_ROOT" "$PROJECT_ROOT" | cargo run -p icebox-cli 2>/dev/null
+    "$PROJECT_ROOT" "$PROJECT_ROOT" | cargo run 2>/dev/null
 
 echo ""
 echo -e "${YELLOW}Press ENTER to view the evidence output...${NC}"
@@ -102,7 +102,7 @@ echo -e "  ${CYAN}→${NC} evidence command shows normalized, scored findings"
 echo ""
 
 printf "charter accept pentest-2026-demo\nscope add %s\nuse vuln_scanner\nset project_dir %s\nrun --approve %s\nevidence 50\nexit\n" \
-    "$PROJECT_ROOT" "$PROJECT_ROOT" "$PROJECT_ROOT" | cargo run -p icebox-cli 2>/dev/null
+    "$PROJECT_ROOT" "$PROJECT_ROOT" "$PROJECT_ROOT" | cargo run 2>/dev/null
 
 echo ""
 echo -e "${YELLOW}Press ENTER to view the audit trail...${NC}"
@@ -122,7 +122,7 @@ echo -e "  ${CYAN}→${NC} Each entry includes: timestamp, module, target, verdi
 echo ""
 
 printf "charter accept pentest-2026-demo\nscope add %s\nuse vuln_scanner\nset project_dir %s\nrun --approve %s\naudit 20\nexit\n" \
-    "$PROJECT_ROOT" "$PROJECT_ROOT" "$PROJECT_ROOT" | cargo run -p icebox-cli 2>/dev/null
+    "$PROJECT_ROOT" "$PROJECT_ROOT" "$PROJECT_ROOT" | cargo run 2>/dev/null
 
 echo ""
 echo -e "${YELLOW}Press ENTER to export audit as CSV...${NC}"
@@ -141,7 +141,7 @@ echo -e "  ${CYAN}→${NC} audit export --format csv --out /tmp/icebox_audit.csv
 echo ""
 
 printf "charter accept pentest-2026-demo\nscope add %s\nuse vuln_scanner\nset project_dir %s\nrun --approve %s\naudit export --format csv --out /tmp/icebox_audit.csv\nexit\n" \
-    "$PROJECT_ROOT" "$PROJECT_ROOT" "$PROJECT_ROOT" | cargo run -p icebox-cli 2>/dev/null
+    "$PROJECT_ROOT" "$PROJECT_ROOT" "$PROJECT_ROOT" | cargo run 2>/dev/null
 
 echo ""
 echo -e "${GREEN}${BOLD}  CSV exported to /tmp/icebox_audit.csv${NC}"
@@ -170,7 +170,7 @@ echo -e "  ${CYAN}→${NC} audit export --format json --out /tmp/icebox_audit.js
 echo ""
 
 printf "charter accept pentest-2026-demo\nscope add %s\nuse vuln_scanner\nset project_dir %s\nrun --approve %s\naudit export --format json --out /tmp/icebox_audit.json\nexit\n" \
-    "$PROJECT_ROOT" "$PROJECT_ROOT" "$PROJECT_ROOT" | cargo run -p icebox-cli 2>/dev/null
+    "$PROJECT_ROOT" "$PROJECT_ROOT" "$PROJECT_ROOT" | cargo run 2>/dev/null
 
 echo ""
 echo -e "${GREEN}${BOLD}  JSON exported to /tmp/icebox_audit.json${NC}"

@@ -12,8 +12,8 @@ governance seam through the interactive CLI.
 
 ```bash
 # Build the CLI first
-cd ICEBOX
-cargo build -p icebox-cli
+cd icebox
+cargo build
 
 # Run all demos (interactive — you press ENTER between steps)
 ./demos/run_all.sh
@@ -39,7 +39,7 @@ cargo build -p icebox-cli
 Each demo script includes narrator comments. When recording:
 
 1. **Clean terminal** — use a 100×40 terminal with dark background
-2. **Pre-build** — run `cargo build -p icebox-cli` before recording
+2. **Pre-build** — run `cargo build` before recording
 3. **Pacing** — each `read -r` is a natural pause point
 4. **Flow** — start with Demo 1 (vuln scanner) to establish the seam concept
 

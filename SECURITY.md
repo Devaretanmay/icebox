@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-ICEBOX is in its MVP phase (v0.x). Security patches will be prioritized for the
+ICEBOX is in its early release phase (v0.x). Security patches will be prioritized for the
 latest release only.
 
 | Version | Supported          |
@@ -21,7 +21,7 @@ governance seam itself is a critical issue. We take security reports seriously.
 Please report vulnerabilities privately via one of these methods:
 
 1. **GitHub Security Advisory:** Navigate to the repository's
-   [Security tab](https://github.com/TBD/ICEBOX/security/advisories) and open a
+   [Security tab](https://github.com/Devaretanmay/icebox/security/advisories) and open a
    new advisory.
 2. **Email:** Send details to the project maintainers (check the repository for
    current contact information).
@@ -59,17 +59,17 @@ To help us triage and fix issues quickly, please include:
 
 The following are **in scope** for security reports:
 
-- The governance seam (`icebox-core` executor, policy engine, approval engine)
-- Audit trail integrity (`icebox-core` audit)
-- Evidence provenance and integrity (`icebox-core` evidence)
+- The governance seam (`icebox::core` executor, policy engine, approval engine)
+- Audit trail integrity (`icebox::core` audit)
+- Evidence provenance and integrity (`icebox::core` evidence)
 - RBAC enforcement (all crates)
-- REST API authentication and authorization (`icebox-interfaces`)
-- C ABI / SDK integrity (`icebox-capi`, `python/icebox_sdk.py`)
+- REST API authentication and authorization (`icebox::interfaces`)
+- C ABI / SDK integrity (`libicebox`, `python/icebox`)
 - Supply chain (compromised dependencies)
 
 The following are **out of scope**:
 
-- The example offensive modules in `icebox-modules` (they are demos)
+- The example offensive modules in `src/modules` (they are demos)
 - Third-party AI models (Ollama, etc.)
 - Issues in dependencies that are already reported upstream
 

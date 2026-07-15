@@ -49,9 +49,9 @@ echo -e "${BLUE}╚════════════════════�
 echo ""
 
 # Check if built
-if [ ! -f "target/debug/icebox-cli" ]; then
+if [ ! -f "target/debug/icebox" ]; then
     echo -e "${YELLOW}Building ICEBOX CLI...${NC}"
-    cargo build -p icebox-cli 2>&1 | tail -3
+    cargo build 2>&1 | tail -3
     echo ""
 fi
 

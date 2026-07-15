@@ -57,7 +57,7 @@ echo -e "${YELLOW}Press ENTER to set up governance...${NC}"
 read -r
 
 printf "charter accept policy-demo\nscope add 10.0.0.0/8\nrole --set admin\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "${YELLOW}Press ENTER to continue...${NC}"
@@ -84,7 +84,7 @@ echo -e "${YELLOW}Press ENTER to attempt blocked execution...${NC}"
 read -r
 
 printf "charter accept policy-demo\nscope add 10.0.0.0/8\nuse reverse_shell_payload\nset lhost 10.0.0.5\nset lport 4444\nrun 10.0.0.5\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "  ${RED}✗ BLOCKED — The policy engine denied execution because the"
@@ -110,7 +110,7 @@ echo -e "${YELLOW}Press ENTER to run with approval...${NC}"
 read -r
 
 printf "charter accept policy-demo\nscope add 10.0.0.0/8\nuse reverse_shell_payload\nset lhost 10.0.0.5\nset lport 4444\nrun --approve 10.0.0.5\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "  ${GREEN}✓ ALLOWED — Operator approval overrode the max-risk gate.${NC}"
@@ -136,7 +136,7 @@ echo -e "${YELLOW}Press ENTER to add the CVSS deny rule...${NC}"
 read -r
 
 printf "charter accept policy-demo\nscope add 10.0.0.0/8\npolicy rule add deny-cvss 7.5\npolicy rules\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "${YELLOW}Press ENTER to demonstrate CVSS-based blocking...${NC}"
@@ -159,7 +159,7 @@ echo -e "${YELLOW}Press ENTER to test CVSS policy gate...${NC}"
 read -r
 
 printf "charter accept policy-demo\nscope add %s\npolicy rule add deny-cvss 7.5\nuse vuln_scanner\nset project_dir %s\nrun --approve %s\nexit\n" \
-    "$PROJECT_ROOT" "$PROJECT_ROOT" "$PROJECT_ROOT" | cargo run -p icebox-cli 2>/dev/null
+    "$PROJECT_ROOT" "$PROJECT_ROOT" "$PROJECT_ROOT" | cargo run 2>/dev/null
 
 echo ""
 echo -e "${YELLOW}Press ENTER to continue...${NC}"
@@ -183,7 +183,7 @@ echo -e "${YELLOW}Press ENTER to add the capability deny rule...${NC}"
 read -r
 
 printf "charter accept policy-demo\nscope add 10.0.0.0/8\npolicy rule add deny persistence\npolicy rules\nexit\n" \
-    | cargo run -p icebox-cli 2>/dev/null
+    | cargo run 2>/dev/null
 
 echo ""
 echo -e "${YELLOW}Press ENTER to inspect all policy rules...${NC}"
@@ -207,7 +207,7 @@ echo -e "${YELLOW}Press ENTER to view the audit trail...${NC}"
 read -r
 
 printf "charter accept policy-demo\nscope add %s\npolicy rule add deny-cvss 7.5\nuse reverse_shell_payload\nset lhost 10.0.0.5\nset lport 4444\nrun 10.0.0.5\nrun --approve 10.0.0.5\naudit 50\nexit\n" \
-    "$PROJECT_ROOT" | cargo run -p icebox-cli 2>/dev/null
+    "$PROJECT_ROOT" | cargo run 2>/dev/null
 
 echo ""
 echo -e "${BLUE}══════════════════════════════════════════════════════════════${NC}"

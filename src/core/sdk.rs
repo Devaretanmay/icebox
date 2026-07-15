@@ -52,8 +52,11 @@ impl Default for TaskSpec {
 pub struct GovernanceConfig {
     pub charter: Charter,
     pub scope: ScopeManager,
+    #[serde(default)]
     pub max_risk: RiskLevel,
+    #[serde(default)]
     pub role: Role,
+    #[serde(default)]
     pub policy_set: PolicySet,
     /// Per-task-name rate ceilings, in invocations per minute.
     #[serde(default)]

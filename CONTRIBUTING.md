@@ -74,13 +74,13 @@ See [Pull Request Process](#pull-request-process) below.
 
 ```bash
 # Clone the repository
-git clone https://github.com/TBD/ICEBOX.git
-cd ICEBOX
+git clone https://github.com/Devaretanmay/icebox.git
+cd icebox
 
-# Build all crates
+# Build the workspace
 cargo build --all
 
-# Run all tests (77 tests, must pass)
+# Run the full test suite
 cargo test --all
 
 # Run clippy
@@ -94,7 +94,7 @@ cargo fmt --check
 
 ```bash
 # Build the C ABI shared library
-cargo build -p icebox-capi
+cargo build
 
 # Run the governed agent example
 cd python
@@ -105,23 +105,25 @@ python examples/governed_agent.py
 ## Project Structure
 
 ```
-ICEBOX/
-├── Cargo.toml              # Workspace root
+icebox/
+├── Cargo.toml              # Single package: lib (SDK) + cdylib (libicebox) + bin (CLI)
+├── src/
+│   ├── lib.rs              # Module declarations + MODULE_REGISTRY
+│   ├── main.rs             # CLI / REST API binary
+│   ├── capi.rs             # C ABI surface over the runtime
+│   ├── core/               # Governance seam — the core product
+│   ├── modules/            # Example modules (demos, not the product)
+│   ├── ai/                 # Autonomous agent + orchestrator
+│   └── interfaces/         # REST API
 ├── crates/
-│   ├── icebox-core/        # Governance seam — the core product
-│   ├── icebox-modules/     # Example modules (demos, not the product)
-│   ├── icebox-ai/          # Autonomous agent + orchestrator
-│   ├── icebox-interfaces/  # REST API
-│   ├── icebox-cli/         # Interactive REPL
-│   ├── icebox-capi/        # C ABI for SDK bindings
 │   └── icebox-macro/       # Proc macro for module registration
 └── python/
-    ├── icebox_sdk.py        # Python SDK
+    ├── icebox/             # Python SDK
     └── examples/
 ```
 
-**Important:** `icebox-modules` contains **demos**. The product is the
-governance layer in `icebox-core`. When contributing, prefer improving the
+**Important:** `src/modules` contains **demos**. The product is the
+governance layer in `src/core`. When contributing, prefer improving the
 governance seam, SDK, or documentation over adding offensive capabilities.
 
 ## Coding Standards
@@ -134,7 +136,7 @@ governance seam, SDK, or documentation over adding offensive capabilities.
   `CamelCase` for types, `SCREAMING_CASE` for constants)
 - **Errors:** Use `thiserror` for library error types, `anyhow` for application code
 - **Async:** Use `tokio` throughout; prefer `async fn` over manual futures
-- **Safety:** `unsafe` is acceptable in `icebox-capi` for FFI; avoid it elsewhere
+- **Safety:** `unsafe` is acceptable in `src/capi.rs` for FFI; avoid it elsewhere
 - **Documentation:** Public APIs must have doc comments. Use `///` with markdown
   and code examples where helpful
 
@@ -168,8 +170,8 @@ refactor: extract policy evaluation into separate module
 ### Writing Tests
 
 - **Unit tests:** Co-located at the bottom of the source file in a `#[cfg(test)] mod tests`
-- **Integration tests:** In `crates/*/tests/` directories
-- **Dogfooding tests:** In `crates/icebox-core/tests/dogfooding.rs` — these test
+- **Integration tests:** In the `tests/` directory at the repository root
+- **Dogfooding tests:** In `tests/dogfooding.rs` — these test
   real modules against real APIs through the governed seam
 - **Network-dependent tests:** Use `#[ignore]` for tests that require external
   services if they're too flaky for CI
@@ -217,5 +219,5 @@ Open an issue with the `design-feedback` or `feature-request` label.
 
 ## Questions?
 
-Open a [Discussion](https://github.com/TBD/ICEBOX/discussions) or reach out to
+Open a [Discussion](https://github.com/Devaretanmay/icebox/discussions) or reach out to
 the maintainers directly. We're happy to help you find a good first contribution.

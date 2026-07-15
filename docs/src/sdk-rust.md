@@ -13,31 +13,34 @@ serde_json = "1"
 ## Govern a task
 
 ```rust
-use icebox::core::{GovernanceRuntime, GovernedOutcome, TaskSpec};
-use serde_json::json;
+use icebox::core::sdk::{GovernanceRuntime, GovernedOutcome, TaskSpec};
+use icebox::core::{Charter, RiskLevel, Capability};
 
 #[tokio::main]
 async fn main() {
-    let rt = GovernanceRuntime::new(serde_json::from_value(json!({
-        "charter": "authorized engagement",
-        "scope": ["10.0.0.0/24"],
-        "max_risk": "high",
-    })).expect("config");
+    let rt = GovernanceRuntime::builder()
+        .charter(Charter::accept("demo", vec![]))
+        .scope(vec!["10.0.0.0/24".into()])
+        .max_risk(RiskLevel::Critical)
+        .build();
 
     let task = TaskSpec {
-        module: "tcp_port_scanner".into(),
+        name: "scan".into(),
         target: "10.0.0.5".into(),
-        options: json!({ "host": "10.0.0.5", "ports": "1-1024" }),
+        capabilities: vec![Capability::NetworkScan],
+        impact: RiskLevel::Low,
+        destructive: false,
+        options: [
+            ("host".into(), "10.0.0.5".into()),
+            ("ports".into(), "1-1024".into()),
+        ].into(),
         ..Default::default()
     };
 
-    // Supervised: approval-gated tasks return `NeedsApproval`.
-    let outcome: GovernedOutcome = rt.check(task.clone()).await;
-    // Unsupervised: approval-gated tasks are auto-granted.
-    let outcome: GovernedOutcome = rt.run(task, || async { Ok(json!(null)) }).await;
-
-    println!("{:?}", outcome.decision);
-    println!("{}", rt.audit_json().await);
+    // `run` auto-grants approval-gated tasks; `execute` queues them.
+    let outcome: GovernedOutcome = rt.run(task, || async { Ok(serde_json::json!(null)) }).await;
+    println!("{:?}", outcome);
+    println!("{:?}", rt.audit().await);
 }
 ```
 

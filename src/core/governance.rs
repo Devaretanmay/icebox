@@ -6,9 +6,10 @@ use crate::core::module::{Capability, Intent};
 use crate::core::safety::{DecisionRecord, PolicyDecision, PolicyRule};
 
 /// Ordered so a required level can be compared with `>=`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
+    #[default]
     Viewer,
     Operator,
     Admin,
