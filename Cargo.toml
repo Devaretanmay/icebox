@@ -1,5 +1,5 @@
 [package]
-name = "icebox"
+name = "icebox-gov"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
@@ -7,7 +7,7 @@ description = "Runtime governance for autonomous offensive security — the sing
 repository = "https://github.com/Devaretanmay/icebox"
 homepage = "https://github.com/Devaretanmay/icebox"
 readme = "README.md"
-keywords = ["security", "governance", "offensive-security", "agent", "policy", "sdk"]
+keywords = ["security", "governance", "offensive-security", "agent", "policy"]
 categories = ["command-line-utilities", "authentication"]
 
 [lib]

@@ -1,0 +1,12 @@
+{
+  "charter": {
+    "accepted": true,
+    "engagement": "production",
+    "rules_of_engagement": ["no_destructive_actions", "no_denial_of_service"]
+  },
+  "scope": {
+    "allow": []
+  },
+  "max_risk": "low",
+  "role": "operator"
+}

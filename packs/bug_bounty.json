@@ -1,0 +1,12 @@
+{
+  "charter": {
+    "accepted": true,
+    "engagement": "bug_bounty",
+    "rules_of_engagement": []
+  },
+  "scope": {
+    "allow": ["*.target.com"]
+  },
+  "max_risk": "medium",
+  "role": "operator"
+}
