@@ -1,6 +1,6 @@
 [package]
 name = "icebox-gov"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 description = "Runtime governance for autonomous offensive security — the single seam every human operator, REST client, and LLM agent must pass through before anything touches a target."
@@ -37,13 +37,13 @@ base64 = "0.22"
 axum = "0.8"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors"] }
-icebox-macro = { path = "crates/icebox-macro", version = "0.1.0" }
+icebox-macro = { path = "crates/icebox-macro", version = "0.1.1" }
 
 [workspace]
 members = ["crates/icebox-macro"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/Devaretanmay/icebox"
