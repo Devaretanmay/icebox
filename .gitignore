@@ -4,3 +4,8 @@
 .vscode/
 *.swp
 .DS_Store
+
+# Python Build Artifacts
+dist/
+python/icebox/_native.*
+python/*.egg-info/
