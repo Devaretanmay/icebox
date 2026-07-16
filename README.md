@@ -58,7 +58,7 @@ ICEBOX enforces governance at exactly one point: `ModuleExecutor::execute()`. Ev
 
 ### 2. Mandatory Sandboxing
 
-By default, any action executed by an agent is safely contained inside an ephemeral Docker sandbox. This prevents security modules from modifying your host system or accessing sensitive local credentials. A module cannot break out of its container unless explicitly permitted by your configuration.
+By default, any action executed by an agent is safely contained inside an ephemeral Docker or Firecracker VM sandbox. This prevents security modules from modifying your host system or accessing sensitive local credentials. A module cannot break out of its container unless explicitly permitted by your configuration. Real payloads (e.g. port scans, SQL injections) are safely routed against disposable proxy targets.
 
 ### 3. Scope and Risk Management
 
@@ -166,6 +166,21 @@ verdict = gov.run({
     "destructive": False,
 })
 print(verdict)
+```
+
+### 5. Seamless Autonomous Agent Integration
+
+ICEBOX acts as the ultimate "seatbelt" for Autonomous Agents by automatically generating OpenAI-compatible JSON tool schemas for all registered offensive modules:
+
+```python
+from icebox import IceboxClient
+
+client = IceboxClient()
+# Auto-generate OpenAI function schemas for Claude, GPT-4, etc.
+tools = client.get_openai_tools()
+
+# The LLM calls the tool, ICEBOX automatically preflights, 
+# requests dashboard approval, and executes the real payload in the sandbox!
 ```
 
 ### 5. Layer in CVSS-aware policy
