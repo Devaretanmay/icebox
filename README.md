@@ -1,6 +1,8 @@
-# ICEBOX
+<div align="center">
+  <img src="assets/icebox-logo-dark.svg" alt="ICEBOX Logo" width="450" />
 
-**Runtime governance for autonomous offensive security.**
+  **A seatbelt for robots that hack things.**
+</div>
 
 [![Build](https://img.shields.io/github/actions/workflow/status/Devaretanmay/icebox/ci.yml?branch=main&style=flat-square)](https://github.com/Devaretanmay/icebox/actions)
 [![Rust](https://img.shields.io/badge/rust-stable-orange?style=flat-square)](https://www.rust-lang.org/)
