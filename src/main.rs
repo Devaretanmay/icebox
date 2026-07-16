@@ -223,7 +223,10 @@ fn cmd_charter(a: &[&str], fw: &mut Framework) {
             fw.executor.charter = Charter::accept(a[1..].join(" "), vec!["authorized".into()]);
             println!("{COLOR_TEAL}accepted: {}{COLOR_RESET}", a[1..].join(" "));
         }
-        "status" => println!("{COLOR_TEAL}accepted: {}{COLOR_RESET}", fw.executor.charter.accepted),
+        "status" => println!(
+            "{COLOR_TEAL}accepted: {}{COLOR_RESET}",
+            fw.executor.charter.accepted
+        ),
         _ => println!("usage: charter accept|status"),
     }
 }
@@ -986,7 +989,9 @@ async fn cmd_pack(a: &[&str], fw: SharedFramework) {
             };
             let mut g = fw.lock().await;
             if !role_allows(g.operator_role, Role::Admin) {
-                println!("{COLOR_ORANGE}forbidden: admin role required to apply packs{COLOR_RESET}");
+                println!(
+                    "{COLOR_ORANGE}forbidden: admin role required to apply packs{COLOR_RESET}"
+                );
                 return;
             }
             let pack = match g.policy_packs.get(&name) {
