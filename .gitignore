@@ -9,3 +9,5 @@
 dist/
 python/icebox/_native.*
 python/*.egg-info/
+*.pyc
+__pycache__/
