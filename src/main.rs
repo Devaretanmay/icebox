@@ -5,7 +5,6 @@ use tokio::sync::Mutex;
 
 const COLOR_ORANGE: &str = "\x1b[38;2;232;84;42m"; // #E8542A
 const COLOR_TEAL: &str = "\x1b[38;2;46;140;147m"; // #2E8C93
-const COLOR_ICE: &str = "\x1b[38;2;201;220;230m"; // #C9DCE6
 const COLOR_SLATE: &str = "\x1b[38;2;74;92;104m"; // #4A5C68
 const COLOR_RESET: &str = "\x1b[0m";
 
