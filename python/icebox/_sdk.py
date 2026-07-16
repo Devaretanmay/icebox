@@ -54,6 +54,9 @@ class IceboxClient:
     def add_scope(self, target: str) -> dict:
         return self._post("/api/v1/scope", {"target": target})
 
+    def set_mode(self, mode: str) -> str:
+        return self._post("/api/v1/mode", {"mode": mode})
+
     def run_module(
         self,
         name: str,

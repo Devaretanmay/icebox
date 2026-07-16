@@ -31,11 +31,11 @@ chokepoint is what makes the system auditable.
 Modules register through the `#[module(...)]` proc macro (in
 `icebox-macro`) and are collected at compile time via `linkme` into
 `MODULE_REGISTRY`. The same registry feeds the CLI, the REST API, and
-the C ABI, so every surface governs identically.
+the daemon, so every surface governs identically.
 
 ## Why a single crate
 
-The published `icebox` crate is one package with a Rust **lib** (the SDK),
-a **cdylib** (`libicebox`, the C ABI), and a **bin** (the CLI). The
+The published `icebox-gov` crate is one package with a Rust **lib** (the SDK),
+and a **bin** (the CLI/Daemon). The
 `#[module(...)]` macro must stay in its own internal crate, but the
-public surface is a single `icebox`.
+public surface is a single `icebox-gov` crate.

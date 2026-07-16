@@ -8,7 +8,7 @@ That's exactly why we built **ICEBOX**.
 
 ## The Governance Seam
 
-ICEBOX is a runtime governance framework designed to put a hard, auditable boundary between offensive security tools and the entities trying to run them. We call this boundary the **Governance Seam**.
+ICEBOX is the runtime governance layer for autonomous security agents and offensive security tooling. We put a hard, auditable boundary between these agents and the targets they are trying to interact with. We call this boundary the **Governance Seam**.
 
 Instead of letting an agent call `nmap` or an exploit script directly, you force all execution through ICEBOX. Before a single packet hits the wire, ICEBOX intercepts the request, evaluates the risk, checks the operational scope, verifies the legal charter, and makes a hard decision: `Allow`, `Block`, or `NeedsApproval`.
 

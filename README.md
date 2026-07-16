@@ -9,10 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Python SDK](https://img.shields.io/badge/python-sdk%20ready-yellow?style=flat-square)](python/icebox)
 
-ICEBOX is a runtime governance framework for autonomous offensive security
-tooling. It gives every human operator, REST client, and autonomous agent a
-single, auditable choke point — the **governance seam** — that must be passed
-before any action is taken against an authorized target.
+ICEBOX is the runtime governance layer for autonomous security agents and offensive security tooling. It gives every human operator, REST client, and autonomous agent a single, auditable choke point — the **governance seam** — that must be passed before any action is taken against an authorized target.
 
 ```text
 Human / CLI / REST Client / LLM Agent / Multi-Agent
@@ -56,6 +53,22 @@ built to govern arbitrary tools and agents, not just the ones shipped here.
 - [Contributing](#contributing)
 - [License](#license)
 
+## Core Concepts
+
+Before diving in, there are a few core concepts you need to understand about how ICEBOX operates.
+
+### 1. The Governance Seam
+
+ICEBOX enforces governance at exactly one point: `ModuleExecutor::execute()`. Every operator action, REST call, and agent step passes through it — that single choke point is what makes the whole system auditable. There is no way to bypass this seam.
+
+### 2. Mandatory Sandboxing
+
+By default, any action executed by an agent is safely contained inside an ephemeral Docker sandbox. This prevents security modules from modifying your host system or accessing sensitive local credentials. A module cannot break out of its container unless explicitly permitted by your configuration.
+
+### 3. Scope and Risk Management
+
+ICEBOX will instantly block any module execution that falls outside of the allowed IP ranges/domains, or exceeds the maximum CVSS risk threshold you have defined. Hallucinating agents are stopped in their tracks.
+
 ## Features
 
 | Area | What it does |
@@ -69,41 +82,38 @@ built to govern arbitrary tools and agents, not just the ones shipped here.
 | **Continuous validation** | Monotonic policy versioning, drift detection, diff reporting |
 | **Multi-agent orchestration** | Concurrent agents sharing one governed audit trail |
 | **Interfaces** | Interactive CLI (REPL) and a REST API with identical governance semantics |
-| **SDKs** | Rust, a C ABI (`libicebox`), and a Python `Governance` class |
+| **SDKs** | Rust, and a Python `Workspace` orchestration class |
 
 ## Installation
 
-ICEBOX ships as a single static binary plus a Python SDK.
-
-### Binary
+The easiest way to get started with ICEBOX is through the unified Python SDK, which includes an interactive setup wizard that automatically installs the underlying Rust daemon (`icebox-daemon`) and checks your environment.
 
 ```sh
-# One-liner
-curl -sSfL https://raw.githubusercontent.com/Devaretanmay/icebox/main/dist/install.sh | sh
+# 1. Install the unified CLI and SDK
+pip install icebox-sdk
 
-# From source
-cargo install icebox
+# 2. Run the interactive setup wizard
+icebox
+```
 
-# Docker (GHCR)
+The wizard will check if Docker and the Rust toolchain are installed, and will seamlessly guide you through compiling and configuring the core engine.
+
+### Alternative: Rust Crates
+
+If you prefer to install the Rust daemon directly without the Python wizard:
+
+```sh
+cargo install icebox-gov
+```
+
+> **macOS note:** If Gatekeeper blocks the daemon on first run, clear the quarantine attribute:
+> `xattr -dr com.apple.quarantine "$(command -v icebox-daemon)"`
+
+### Docker (GHCR)
+```sh
 docker pull ghcr.io/devaretanmay/icebox:latest
 docker run --rm -p 8443:8443 ghcr.io/devaretanmay/icebox
 ```
-
-> **macOS note:** the release binary isn't Apple-signed. If Gatekeeper blocks
-> it on first run, clear the quarantine attribute:
-> `xattr -dr com.apple.quarantine "$(command -v icebox)"`
-
-Homebrew packaging is planned but not yet available.
-
-### Python SDK
-
-```sh
-pip install icebox-sdk
-```
-
-The Python SDK wraps the compiled `libicebox` C ABI via `ctypes`. If the
-native library isn't found, build it with `cargo build` or point
-`ICEBOX_CAPI` at its path.
 
 ## Quickstart
 
@@ -174,9 +184,8 @@ icebox> policy rule add require-approval-if --cvss 5.0 --epss 0.1 --kev
 
 | SDK | Status | Usage |
 | --- | --- | --- |
-| Rust (native) | Available | `icebox` crate |
-| C ABI | Available | `libicebox` (`icebox_govern`, `icebox_check`, ...) |
-| Python | Available | `icebox.Governance` via `ctypes` |
+| Rust (native) | Available | `icebox-gov` crate |
+| Python | Available | `icebox.Workspace` via REST API |
 | TypeScript / Java / Go | Planned | Community contributions welcome |
 
 ## Architecture
@@ -205,7 +214,7 @@ bypasses the seam.
 
 ```
 icebox/
-├── Cargo.toml              # Single package: lib (SDK) + cdylib (libicebox) + bin (CLI)
+├── Cargo.toml              # Single package: lib (SDK) + bin (CLI)
 ├── src/
 │   ├── lib.rs              # Module declarations + MODULE_REGISTRY
 │   ├── main.rs             # CLI / REST API binary
@@ -217,9 +226,7 @@ icebox/
 ├── crates/
 │   └── icebox-macro/       # #[module(...)] attribute macro
 ├── python/
-│   ├── icebox/             # Python SDK (ctypes)
-│   └── examples/
-│       └── governed_agent.py
+│   └── icebox/             # Python SDK
 ├── dist/install.sh         # curl | sh installer
 ├── Dockerfile              # GHCR image
 └── docs/                   # mdBook site

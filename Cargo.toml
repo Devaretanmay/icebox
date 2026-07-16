@@ -1,7 +1,8 @@
 [package]
 name = "icebox-gov"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
+authors = ["Tanmay Devare <contact@tanmaydevare.com>"]
 license = "MIT"
 description = "Runtime governance for autonomous offensive security — the single seam every human operator, REST client, and LLM agent must pass through before anything touches a target."
 repository = "https://github.com/Devaretanmay/icebox"

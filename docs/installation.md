@@ -1,53 +1,45 @@
 # Installation
 
-ICEBOX ships as a single static binary plus a Python SDK. Pick the channel
-you prefer — they all install the same `icebox` binary.
+ICEBOX ships with a unified Python SDK that includes an interactive setup wizard. This is the recommended path for both Python and non-Python users.
 
-## One-liner (curl | sh)
-
-```sh
-curl -sSfL https://raw.githubusercontent.com/Devaretanmay/icebox/main/dist/install.sh | sh
-```
-
-macOS users: the binary is not Apple-signed, so Gatekeeper may block the
-first run. Clear the quarantine bit with:
+## 1. Unified Python SDK (Recommended)
 
 ```sh
-xattr -dr com.apple.quarantine "$(command -v icebox)"
+pip install icebox-sdk
 ```
 
-## Homebrew (planned)
-
-Homebrew is not wired up yet. Until then, use the one-liner, `cargo install`,
-or Docker.
-
-## Cargo
+After installing the SDK, launch the interactive setup wizard:
 
 ```sh
-cargo install icebox
+icebox
 ```
 
-## Docker (GHCR — no Docker Hub)
+The wizard will check your environment for Docker and the Rust toolchain. If the core Rust daemon is missing, it will seamlessly compile and install it for you.
+
+## 2. Cargo (Alternative)
+
+If you prefer to install the underlying Rust daemon directly without the Python wizard:
+
+```sh
+cargo install icebox-gov
+```
+
+> **macOS note:** If Gatekeeper blocks the daemon on first run, clear the quarantine attribute:
+> `xattr -dr com.apple.quarantine "$(command -v icebox-daemon)"`
+
+## 3. Docker (GHCR — no Docker Hub)
 
 ```sh
 docker pull ghcr.io/devaretanmay/icebox:latest
 docker run --rm -p 8443:8443 ghcr.io/devaretanmay/icebox
 ```
 
-## Python SDK
-
-```sh
-pip install icebox-sdk
-```
-
-The Python SDK wraps the compiled `libicebox` C ABI via `ctypes`. If you
-install `icebox-sdk` without building the native lib, obtain `libicebox`
-from any of the channels above (the SDK auto-discovers it next to the
-package, or set `ICEBOX_CAPI` to its path).
-
 ## Verify
 
 ```sh
+# Verify the daemon proxy works
 icebox --version
-python -c "from icebox import Governance; print('ok')"
+
+# Verify the SDK
+python -c "from icebox import Workspace; print('ok')"
 ```

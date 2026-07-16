@@ -13,12 +13,14 @@ class Workspace:
     C-pointers or HTTP endpoints directly.
     """
 
-    def __init__(self, target: str, url: str = "http://127.0.0.1:8443"):
-        """Initialize the workspace with a target path and ICEBOX daemon URL."""
+    def __init__(self, target: str, mode: str = "freezer", url: str = "http://127.0.0.1:8443"):
+        """Initialize the workspace with a target path, restriction mode, and ICEBOX daemon URL."""
         self.target = target
+        self.mode = mode
         self.client = IceboxClient(url)
         self.client.accept_charter(self.target)
         self.client.add_scope(self.target)
+        self.client.set_mode(self.mode)
     
     def execute(self, module: str, sandbox: bool = False, approved: bool = True, options: dict | None = None) -> dict:
         """Executes a module against the workspace target."""
@@ -29,4 +31,4 @@ class Workspace:
         return self.client.audit(n)
 
 __all__ = ["Governance", "IceboxClient", "IceboxError", "Workspace"]
-__version__ = "0.2.0"
+__version__ = "0.2.2"

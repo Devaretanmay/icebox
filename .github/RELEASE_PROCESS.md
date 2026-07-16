@@ -7,8 +7,8 @@ small: distribution should be something anyone can run.
 
 | Channel | What | Workflow |
 | --- | --- | --- |
-| GitHub Releases | Prebuilt `icebox` binaries for Linux/macOS/Windows + the `libicebox` C ABI | `.github/workflows/release.yml` (trigered on `v*` tags) |
-| crates.io | `cargo install icebox` | same `release.yml` (`crates` job) |
+| GitHub Releases | Prebuilt `icebox-daemon` binaries for Linux/macOS/Windows | `.github/workflows/release.yml` (trigered on `v*` tags) |
+| crates.io | `cargo install icebox-gov` | same `release.yml` (`crates` job) |
 | PyPI | `pip install icebox-sdk` | same `release.yml` (`pypi` job) |
 | GHCR | `ghcr.io/devaretanmay/icebox` Docker image | same `release.yml` (`docker` job) |
 | GitHub Pages | mdBook docs | `.github/workflows/docs.yml` (on `main`) |
@@ -40,18 +40,6 @@ never committed to the repo.
 
 ## Why `icebox-macro` is a separate published crate
 
-The published `icebox` crate is one package: a Rust **lib** (SDK), a
-**cdylib** (`libicebox` C ABI), and a **bin** (CLI). The `#[module(...)]`
-proc macro must live in its own crate (proc macros require a separate
-compilation unit), so it ships as `icebox-macro` on crates.io and is
-published before `icebox`. This mirrors the `serde` / `serde_derive`
-split.
+The published `icebox-gov` crate is one package: a Rust **lib** (SDK), and a
+**bin** (CLI/Daemon). The `#[module(...)]` proc macro must live in its own crate (proc macros require a separate compilation unit), so it ships as `icebox-macro` on crates.io and is published before `icebox-gov`. This mirrors the `serde` / `serde_derive` split.
 
-## Known limitation (PyPI)
-
-`icebox-sdk` is currently a **pure-Python** wheel that loads the
-compiled `libicebox` at runtime (auto-discovered next to the package,
-via `ICEBOX_CAPI`, or from a `cargo`/`brew` install). A future
-improvement is to bundle the cdylib into the wheel (via a `pyo3` or
-`uniffi` binding in `setuptools-rust`/`maturin`), so `pip install`
-is fully self-contained.

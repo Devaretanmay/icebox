@@ -1,92 +1,66 @@
 # SDK: Python
 
-`pip install icebox-sdk` gives you `icebox.Governance`, which drives
-the same charter / scope / risk / approval gates that guard native
-ICEBOX modules — so any Python agent can be governed by the single seam.
+`pip install icebox-sdk` gives you the `Workspace` abstraction, which automatically manages the ICEBOX daemon, charter, scope, and API communications for your AI agents.
 
 ```sh
 pip install icebox-sdk
 ```
 
-The SDK wraps the compiled `libicebox` C ABI via `ctypes`. If the
-native lib is not found, build it (`cargo build`) or set
-`ICEBOX_CAPI` to its path.
+The SDK seamlessly acts as a proxy for the `icebox-daemon` binary. You no longer need to worry about C ABIs or compiling native libraries. The interactive setup wizard (run via `icebox`) handles everything for you.
 
-## Govern a task
+## The Workspace Abstraction
 
-```python
-from icebox import Governance
-
-gov = Governance({
-    "charter": {"accepted": True, "engagement": "demo", "rules_of_engagement": []},
-    "scope": {"allow": ["10.0.0.0/24"]},
-    "max_risk": "high",
-    "role": "admin",
-})
-
-task = {
-    "name": "scan",
-    "target": "10.0.0.5",
-    "capabilities": ["network_scan"],
-    "impact": "low",
-    "destructive": False,
-    "options": {"host": "10.0.0.5", "ports": "1-1024"},
-}
-
-# Supervised: approval-gated tasks return a "NeedsApproval" decision.
-outcome = gov.check(task)
-# Unsupervised: approval-gated tasks are auto-granted.
-outcome = gov.run(task)
-
-print(outcome)              # e.g. {"Allowed": {"result": null, "decision_id": 1}}
-print(gov.audit_json())    # full audit log as JSON
-print(gov.audit_csv())     # same, as CSV
-```
-
-## Risk / CVSS gating
-
-A task may carry a CVSS score, which policies like `deny_if_cvss_above`
-consult. The `cvss` field accepts either a bare number or an object:
+The `Workspace` class provides a high-level orchestration interface ideal for agentic loops.
 
 ```python
-task = {
-    "name": "exploit",
-    "target": "10.0.0.5",
-    "capabilities": ["privilege_escalation"],
-    "impact": "high",
-    "destructive": False,
-    "cvss": 9.5,            # a bare number...
-    # ...or the structured form (epss/kev enrich the weighted risk):
-    # "cvss": {"cvss_v31": 9.5, "epss": 0.9, "kev": True},
-}
+from icebox import Workspace
+
+# 1. Initialize the Workspace
+# This automatically accepts the charter and adds the target to the allowed scope
+workspace = Workspace(target="127.0.0.1")
+
+# 2. Run a task
+# The workspace proxies the request to the underlying REST API
+try:
+    outcome = workspace.execute(
+        module="recon",
+        sandbox=True,
+        approved=True
+    )
+    print("Success:", outcome)
+except Exception as e:
+    print("Governance Blocked:", e)
+
+# 3. Retrieve the audit trail
+audit_log = workspace.audit(n=10)
+print(audit_log)
 ```
 
-Pair it with a policy that blocks high scores:
+## Raw REST API Wrapper
+
+If you want low-level control over the REST API without the automatic scoping provided by `Workspace`, use the `IceboxClient`:
 
 ```python
-gov = Governance({
-    "charter": {"accepted": True, "engagement": "demo", "rules_of_engagement": []},
-    "scope": {"allow": ["10.0.0.0/8"]},
-    "max_risk": "critical",
-    "role": "admin",
-    "policy_set": {"rules": [{"deny_if_cvss_above": 7.0}], "version": 1},
-})
-print(gov.check(task))
-# {'Blocked': {'reason': 'CVSS score 9.5 exceeds deny threshold 7.0', ...}}
+from icebox import IceboxClient
+
+client = IceboxClient("http://127.0.0.1:8443")
+client.accept_charter("10.0.0.0/8")
+client.add_scope("10.0.0.5")
+
+outcome = client.run_module(
+    module_name="scan",
+    target="10.0.0.5",
+    sandbox=False,
+    approved=True,
+    options={"host": "10.0.0.5", "ports": "1-1024"}
+)
 ```
 
-## API
+## API Reference
 
-| Method | Purpose |
+| Class/Method | Purpose |
 | --- | --- |
-| `Governance(config)` | Construct a governed runtime from a dict. |
-| `.check(task)` | Supervised evaluation; approval-gated tasks return `NeedsApproval`. |
-| `.run(task)` | Unsupervised evaluation; approval-gated tasks are auto-granted. |
-| `.approve(id)` / `.deny(id)` | Resolve a pending approval request. |
-| `.pending()` | List pending approval requests. |
-| `.audit_json()` / `.audit_csv()` | Export the full audit trail. |
-
-## Examples
-
-See `python/examples/governed_agent.py` for a complete governed-agent
-loop.
+| `Workspace(target, url)` | Construct a governed workspace for a specific target. Automatically handles charter and scope. |
+| `Workspace.execute(module, sandbox, approved, options)` | Run a module against the workspace target. |
+| `Workspace.audit(n)` | Fetch the last `n` audit logs as JSON. |
+| `IceboxClient(url)` | Raw REST client for precise control over the daemon API. |

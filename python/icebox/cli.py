@@ -5,17 +5,17 @@ import time
 
 def print_header():
     print("=" * 60)
-    print("🧊 ICEBOX - The Runtime Governance Layer".center(60))
+    print("Welcome to ICEBOX".center(60))
     print("=" * 60)
     print()
 
 def check_command(cmd, name):
     try:
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-        print(f" [✓] {name} is installed.")
+        print(f" [PASS] {name} is installed.")
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
-        print(f" [✗] {name} is NOT installed or not in PATH.")
+        print(f" [FAIL] {name} is NOT installed or not in PATH.")
         return False
 
 def prompt_yes_no(prompt):
@@ -28,7 +28,7 @@ def prompt_yes_no(prompt):
 
 def interactive_setup():
     print_header()
-    print("Welcome! Let's get your ICEBOX environment set up.\n")
+    print("Welcome, let's get your ICEBOX environment set up.\n")
 
     print("Checking dependencies...")
     has_docker = check_command(["docker", "--version"], "Docker")
@@ -38,35 +38,45 @@ def interactive_setup():
     print("\n" + "-" * 60 + "\n")
 
     if not has_docker:
-        print("⚠️  Docker is missing.")
-        print("   ICEBOX requires Docker for mandatory target sandboxing.")
-        print("   Please install Docker Desktop: https://www.docker.com/products/docker-desktop/\n")
+        print("[WARNING] Docker is missing.")
+        print("          ICEBOX requires Docker for mandatory target sandboxing.")
+        print("          Please install Docker Desktop: https://www.docker.com/products/docker-desktop/\n")
     
     if not has_cargo:
-        print("⚠️  Cargo (Rust toolchain) is missing.")
-        print("   ICEBOX requires Rust to compile and install the core daemon.")
-        print("   Install it via: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh\n")
+        print("[WARNING] Cargo (Rust toolchain) is missing.")
+        print("          ICEBOX requires Rust to compile and install the core daemon.")
+        print("          Install it via: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh\n")
 
     if has_cargo and not has_daemon:
-        print("⚙️  ICEBOX Daemon is not installed.")
+        print("[SETUP] ICEBOX Daemon is not installed.")
         if prompt_yes_no("Would you like to install it now via 'cargo install icebox-gov'?"):
             print("\nInstalling ICEBOX Daemon (this may take a minute)...")
             try:
                 subprocess.run(["cargo", "install", "icebox-gov"], check=True)
-                print("\n[✓] ICEBOX Daemon successfully installed as 'icebox-daemon'!\n")
+                print("\n[SUCCESS] ICEBOX Daemon successfully installed as 'icebox-daemon'!\n")
                 has_daemon = True
             except subprocess.CalledProcessError:
-                print("\n[✗] Failed to install ICEBOX Daemon. Please try running 'cargo install icebox-gov' manually.\n")
+                print("\n[ERROR] Failed to install ICEBOX Daemon. Please try running 'cargo install icebox-gov' manually.\n")
     
     if has_docker and has_cargo and has_daemon:
-        print("✅ Your ICEBOX environment is fully configured!")
-        print("\nTo start the REST API and Governance engine, run:")
+        print("[SUCCESS] Your ICEBOX environment is fully configured!\n")
+        print("ICEBOX governs your autonomous agents through three core restriction modes:\n")
+        print("  - The Fridge (Low Restriction)")
+        print("      Agents run with broad scope and minimal human oversight.")
+        print("      Ideal for safe, read-only reconnaissance.\n")
+        print("  - The Freezer (Medium Restriction)")
+        print("      Agents are strictly sandboxed.")
+        print("      CVSS limits are enforced and out-of-scope targets are blocked.\n")
+        print("  - The Deep Freezer (High Restriction)")
+        print("      Every destructive action requires explicit human approval.")
+        print("      Ideal for sensitive or production environments.\n")
+        print("To start the REST API and Governance engine, run:")
         print("  icebox --api")
-        print("\nTo launch the autonomous CLI orchestrator, run:")
-        print("  icebox")
+        print("\nTo launch the interactive CLI orchestrator, run:")
+        print("  icebox --cli")
         print("\n(Note: any arguments passed to 'icebox' are directly forwarded to the 'icebox-daemon').")
     else:
-        print("❌ Setup is incomplete. Please resolve the missing dependencies and run 'icebox' again.")
+        print("[ERROR] Setup is incomplete. Please resolve the missing dependencies and run 'icebox' again.")
 
 def main():
     # If the user passed arguments, we act as a transparent proxy to the Rust daemon.
@@ -77,7 +87,7 @@ def main():
             # os.execvp replaces the current process with the icebox-daemon
             os.execvp("icebox-daemon", ["icebox-daemon"] + sys.argv[1:])
         except FileNotFoundError:
-            print("❌ Error: 'icebox-daemon' not found in PATH.")
+            print("[ERROR] 'icebox-daemon' not found in PATH.")
             print("Please run 'icebox' (with no arguments) to launch the setup wizard and install it.")
             sys.exit(1)
     

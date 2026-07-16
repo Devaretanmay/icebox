@@ -160,6 +160,11 @@ struct EvidenceQuery {
     kind: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct SetModePayload {
+    mode: String,
+}
+
 pub async fn serve(fw: SharedFramework, addr: SocketAddr) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/api/v1/modules", get(list_modules))
@@ -200,6 +205,7 @@ pub async fn serve(fw: SharedFramework, addr: SocketAddr) -> anyhow::Result<()> 
         .route("/api/v1/evidence", get(list_evidence))
         .route("/api/v1/traces", get(list_traces))
         .route("/api/v1/memory", get(list_memory))
+        .route("/api/v1/mode", post(set_mode))
         .layer(CorsLayer::permissive())
         .with_state(fw);
 
@@ -272,6 +278,40 @@ async fn set_option(
     match loaded.module.set_option(&payload.key, &payload.value) {
         Ok(_) => Json(Ok(format!("{}={}", payload.key, payload.value))),
         Err(e) => Json(Err(e.to_string())),
+    }
+}
+
+async fn set_mode(
+    State(fw): State<SharedFramework>,
+    Json(payload): Json<SetModePayload>,
+) -> Result<Json<String>, StatusCode> {
+    let mut fw = fw.lock().await;
+    if !role_allows(fw.operator_role, Role::Operator) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    
+    fw.executor.policy_set.rules.clear();
+
+    match payload.mode.to_lowercase().as_str() {
+        "fridge" => {
+            fw.executor.policy_set.add_rule(PolicyRule::MaxRisk(RiskLevel::Low));
+            Ok(Json("mode set to fridge".into()))
+        }
+        "freezer" => {
+            fw.executor.policy_set.add_rule(PolicyRule::MaxRisk(RiskLevel::High));
+            fw.executor.policy_set.add_rule(PolicyRule::DenyIfCvssAbove(7.0));
+            Ok(Json("mode set to freezer".into()))
+        }
+        "deep_freezer" | "deep freezer" | "deep-freezer" => {
+            fw.executor.policy_set.add_rule(PolicyRule::MaxRisk(RiskLevel::Critical));
+            fw.executor.policy_set.add_rule(PolicyRule::RequireApprovalIf {
+                cvss_above: Some(0.0),
+                epss_above: None,
+                kev: false,
+            });
+            Ok(Json("mode set to deep_freezer".into()))
+        }
+        _ => Err(StatusCode::BAD_REQUEST),
     }
 }
 

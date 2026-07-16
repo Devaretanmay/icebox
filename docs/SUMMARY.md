@@ -7,6 +7,5 @@
 - [Architecture](./architecture.md)
 - [SDK: Rust](./sdk-rust.md)
 - [SDK: Python](./sdk-python.md)
-- [SDK: C ABI](./sdk-cabi.md)
 - [Troubleshooting](./troubleshooting.md)
 - [Account-free usage](./no-account.md)

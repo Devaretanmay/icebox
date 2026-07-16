@@ -76,31 +76,26 @@ curl -X POST http://127.0.0.1:8443/api/v1/modules/recon/run \
 The Python SDK is the recommended path for integrating ICEBOX into autonomous agent frameworks (like LangChain, AutoGen, or custom loops).
 
 ```python
-from icebox import Governance
+from icebox import Workspace
 
-# Initialize the Governance Seam
-gov = Governance({
-    "charter": {"accepted": True, "engagement": "agent-audit", "rules_of_engagement": []},
-    "scope": {"allow": ["127.0.0.1"]},
-    "max_risk": "low",
-    "role": "operator"
-})
+# The Workspace abstraction automatically accepts the charter and adds the target to scope
+workspace = Workspace(target="127.0.0.1")
 
-# Attempt to execute an offensive module
-result = gov.run({
-    "name": "recon",
-    "target": "127.0.0.1",
-    "capabilities": ["network_scan"],
-    "impact": "low",
-    "destructive": False
-})
-
-if "Blocked" in result:
-    print(f"Execution blocked by ICEBOX: {result['Blocked']}")
-elif "NeedsApproval" in result:
-    print(f"Execution halted, requires human approval: {result['NeedsApproval']}")
-else:
-    print("Execution allowed. Evidence gathered.")
+# Attempt to execute an offensive module with sandbox mode on
+try:
+    result = workspace.execute(
+        module="recon",
+        sandbox=True,
+        approved=True
+    )
+    print(f"Success! Output: {result}")
+    
+    # Audit trail is immediately available
+    trail = workspace.audit()
+    print(f"Audit Log: {trail}")
+    
+except Exception as e:
+    print(f"Execution blocked by ICEBOX governance: {e}")
 ```
 
 ## 4. Using the Rust SDK
