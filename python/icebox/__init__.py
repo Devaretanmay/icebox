@@ -1,11 +1,10 @@
-"""Python SDK for the ICEBOX Governance Kernel (C ABI / ctypes).
+"""Python SDK for the ICEBOX Governance Kernel.
 
-``pip install icebox-sdk`` gives you :class:`icebox.Governance`, which drives
-the same charter / scope / risk / approval gates that guard native ICEBOX
-modules — so any Python agent can be governed by the single seam.
+``pip install icebox-sdk`` gives you :class:`IceboxClient` for talking to
+the ICEBOX REST API and :class:`Governance` for backward-compatible usage.
 """
 
-from ._sdk import Governance
+from ._sdk import Governance, IceboxClient, IceboxError
 
-__all__ = ["Governance"]
-__version__ = "0.1.0"
+__all__ = ["Governance", "IceboxClient", "IceboxError"]
+__version__ = "0.2.0"

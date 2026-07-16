@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "icebox-sdk"
-version = "0.1.1"
+version = "0.2.0"
 description = "Python SDK for ICEBOX — runtime governance for autonomous offensive security."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "MIT" }
-keywords = ["security", "governance", "offensive-security", "sdk"]
+keywords = ["security", "governance", "offensive-security", "sdk", "ai", "langchain"]
 authors = [{ name = "Tanmay Devare" }]
 classifiers = [
     "License :: OSI Approved :: MIT License",
@@ -17,6 +17,9 @@ classifiers = [
     "Topic :: Security",
 ]
 dependencies = []
+
+[project.optional-dependencies]
+langchain = ["langchain>=0.1", "pydantic>=2"]
 
 [project.urls]
 Homepage = "https://github.com/Devaretanmay/icebox"
@@ -27,4 +30,4 @@ package-dir = { "" = "python" }
 packages = ["icebox"]
 
 [tool.setuptools.package-data]
-icebox = ["_native.*"]
+icebox = ["py.typed"]
