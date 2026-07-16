@@ -24,6 +24,8 @@ pub use sdk::*;
 
 pub mod workspace;
 
+pub mod sandbox;
+
 #[derive(Debug, thiserror::Error)]
 pub enum WorkspaceError {
     #[error("I/O error: {0}")]

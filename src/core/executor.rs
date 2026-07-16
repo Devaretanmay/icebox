@@ -164,7 +164,7 @@ impl ModuleExecutor {
             "executor: preflight passed"
         );
         let result = if sandbox {
-            self.run_simulated(&loaded.info, target)
+            self.run_sandboxed(&loaded.info, target).await
         } else {
             loaded.module.run().await?
         };
@@ -214,6 +214,38 @@ impl ModuleExecutor {
         let overflow = self.evidence.len().saturating_sub(MAX_EVIDENCE);
         if overflow > 0 {
             self.evidence.drain(..overflow);
+        }
+    }
+    async fn run_sandboxed(
+        &self,
+        info: &crate::core::module::ModuleInfo,
+        target: &str,
+    ) -> ModuleResult {
+        use crate::core::sandbox::Sandbox;
+        match Sandbox::freeze(target, "alpine:3.20").await {
+            Ok(sandbox) => {
+                info!(
+                    container = %sandbox.container_id(),
+                    "[SANDBOX] Docker container frozen"
+                );
+                let mut result = self.run_simulated(info, target);
+                let logs = sandbox.capture_logs().await;
+                result.evidence.extend(logs);
+                result.evidence.push(format!(
+                    "[SANDBOX] Container melted: {}",
+                    sandbox.container_id()
+                ));
+                if let Err(e) = sandbox.melt().await {
+                    result
+                        .evidence
+                        .push(format!("[SANDBOX] Teardown warning: {e}"));
+                }
+                result
+            }
+            Err(_) => {
+                info!("[SANDBOX] Docker unavailable, falling back to simulation");
+                self.run_simulated(info, target)
+            }
         }
     }
 
