@@ -1,0 +1,137 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&family=IBM+Plex+Sans:wght@400;500&display=swap');
+
+:root {
+  /* ICEBOX Brand Colors */
+  --seam-black: #0E1620;
+  --core-ice: #C9DCE6;
+  --slate-steel: #4A5C68;
+  --frost-white: #F1F5F7;
+  --hazard-orange: #E8542A;
+  --signal-teal: #2E8C93;
+
+  /* Fonts */
+  --font-mono: 'IBM Plex Mono', monospace;
+  --font-sans: 'IBM Plex Sans', sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--seam-black);
+  color: var(--frost-white);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  margin-top: 0;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.bg-seam-black { background-color: var(--seam-black); }
+.bg-core-ice { background-color: var(--core-ice); }
+.bg-slate-steel { background-color: var(--slate-steel); }
+.bg-frost-white { background-color: var(--frost-white); }
+.bg-hazard-orange { background-color: var(--hazard-orange); }
+.bg-signal-teal { background-color: var(--signal-teal); }
+
+.text-seam-black { color: var(--seam-black); }
+.text-core-ice { color: var(--core-ice); }
+.text-slate-steel { color: var(--slate-steel); }
+.text-frost-white { color: var(--frost-white); }
+.text-hazard-orange { color: var(--hazard-orange); }
+.text-signal-teal { color: var(--signal-teal); }
+
+/* Utility classes for layout */
+.flex { display: flex; }
+.flex-col { display: flex; flex-direction: column; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.justify-center { justify-content: center; }
+.gap-4 { gap: 1rem; }
+.gap-2 { gap: 0.5rem; }
+.p-4 { padding: 1rem; }
+.p-8 { padding: 2rem; }
+.m-0 { margin: 0; }
+.w-full { width: 100%; }
+.h-screen { height: 100vh; }
+.max-w-4xl { max-width: 56rem; margin-left: auto; margin-right: auto; }
+
+/* Dashboard specific components */
+.card {
+  background-color: var(--seam-black);
+  border: 1px solid var(--slate-steel);
+  border-radius: 4px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: 2px;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.badge.blocked {
+  background-color: rgba(232, 84, 42, 0.1);
+  color: var(--hazard-orange);
+  border: 1px solid var(--hazard-orange);
+}
+
+.badge.allowed {
+  background-color: rgba(46, 140, 147, 0.1);
+  color: var(--signal-teal);
+  border: 1px solid var(--signal-teal);
+}
+
+.button {
+  background-color: var(--core-ice);
+  color: var(--seam-black);
+  border: none;
+  padding: 0.5rem 1rem;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.2s ease;
+}
+
+.button:hover {
+  background-color: var(--frost-white);
+}
+
+.button.primary {
+  background-color: var(--signal-teal);
+  color: var(--frost-white);
+}
+
+.button.primary:hover {
+  background-color: #3bb2ba;
+}
+
+.button.danger {
+  background-color: var(--hazard-orange);
+  color: var(--frost-white);
+}
+
+.button.danger:hover {
+  background-color: #fb6539;
+}
+
+.header {
+  border-bottom: 2px solid var(--slate-steel);
+  padding-bottom: 1rem;
+  margin-bottom: 2rem;
+}
