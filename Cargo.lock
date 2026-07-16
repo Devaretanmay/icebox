@@ -500,7 +500,7 @@ dependencies = [
 
 [[package]]
 name = "icebox-gov"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -527,7 +527,7 @@ dependencies = [
 
 [[package]]
 name = "icebox-macro"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "proc-macro2",
  "quote",
