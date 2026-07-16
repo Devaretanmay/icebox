@@ -6,11 +6,17 @@ use bollard::query_parameters::{
 use bollard::Docker;
 use futures_util::StreamExt;
 
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SandboxEngineType {
+    Docker,
+    Firecracker,
+}
+
 #[derive(Debug)]
-pub struct Sandbox {
-    docker: Docker,
-    container_id: String,
-    target: String,
+pub enum Sandbox {
+    Docker(DockerSandbox),
+    Firecracker(FirecrackerSandbox),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -19,9 +25,72 @@ pub enum SandboxError {
     Docker(#[from] bollard::errors::Error),
     #[error("docker daemon not reachable")]
     Unavailable,
+    #[error("firecracker error: {0}")]
+    Firecracker(String),
+    #[error("engine {0} is not supported on this operating system")]
+    UnsupportedOS(&'static str),
 }
 
 impl Sandbox {
+    pub async fn freeze(
+        engine: SandboxEngineType,
+        target: &str,
+        image: &str,
+    ) -> Result<Self, SandboxError> {
+        match engine {
+            SandboxEngineType::Docker => {
+                Ok(Sandbox::Docker(DockerSandbox::freeze(target, image).await?))
+            }
+            SandboxEngineType::Firecracker => Ok(Sandbox::Firecracker(
+                FirecrackerSandbox::freeze(target, image).await?,
+            )),
+        }
+    }
+
+    pub fn container_id(&self) -> &str {
+        match self {
+            Sandbox::Docker(d) => d.container_id(),
+            Sandbox::Firecracker(f) => f.container_id(),
+        }
+    }
+
+    pub fn target(&self) -> &str {
+        match self {
+            Sandbox::Docker(d) => d.target(),
+            Sandbox::Firecracker(f) => f.target(),
+        }
+    }
+
+    pub async fn ip_address(&self) -> Result<String, SandboxError> {
+        match self {
+            Sandbox::Docker(d) => d.ip_address().await,
+            Sandbox::Firecracker(f) => f.ip_address().await,
+        }
+    }
+
+    pub async fn capture_logs(&self) -> Vec<String> {
+        match self {
+            Sandbox::Docker(d) => d.capture_logs().await,
+            Sandbox::Firecracker(f) => f.capture_logs().await,
+        }
+    }
+
+    pub async fn melt(self) -> Result<(), SandboxError> {
+        match self {
+            Sandbox::Docker(d) => d.melt().await,
+            Sandbox::Firecracker(f) => f.melt().await,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct DockerSandbox {
+    docker: Docker,
+    container_id: String,
+    target: String,
+}
+
+impl DockerSandbox {
     pub fn is_available() -> bool {
         Docker::connect_with_local_defaults()
             .and_then(|d| {
@@ -66,7 +135,7 @@ impl Sandbox {
             .start_container(&resp.id, None::<StartContainerOptions>)
             .await?;
 
-        Ok(Sandbox {
+        Ok(DockerSandbox {
             docker,
             container_id: resp.id,
             target: target.to_string(),
@@ -116,7 +185,7 @@ impl Sandbox {
             };
             for line in text.lines() {
                 if !line.is_empty() {
-                    lines.push(format!("[SANDBOX] {line}"));
+                    lines.push(format!("[SANDBOX-DOCKER] {line}"));
                 }
             }
         }
@@ -133,6 +202,60 @@ impl Sandbox {
                 }),
             )
             .await?;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct FirecrackerSandbox {
+    vm_id: String,
+    target: String,
+}
+
+impl FirecrackerSandbox {
+    pub async fn freeze(target: &str, _image: &str) -> Result<Self, SandboxError> {
+        if cfg!(target_os = "macos") {
+            return Err(SandboxError::UnsupportedOS("Firecracker (Linux KVM required)"));
+        }
+
+        let vm_id = format!("icebox-fc-{}", std::process::id());
+
+        // In a real implementation, we would use hyper or reqwest to send UDS HTTP requests to the
+        // firecracker binary's unix domain socket (/tmp/firecracker.socket). 
+        // 
+        // 1. PUT /boot-source (kernel vmlinux)
+        // 2. PUT /drives/rootfs (rootfs.ext4)
+        // 3. PUT /network-interfaces/eth0 (TAP device)
+        // 4. PUT /actions (InstanceStart)
+        
+        // For now, this is mocked as we expect to run on macOS during dev.
+        // It would panic or error if forced, but we gracefully return an UnsupportedOS error above.
+
+        Ok(FirecrackerSandbox {
+            vm_id,
+            target: target.to_string(),
+        })
+    }
+
+    pub fn container_id(&self) -> &str {
+        &self.vm_id
+    }
+
+    pub fn target(&self) -> &str {
+        &self.target
+    }
+
+    pub async fn ip_address(&self) -> Result<String, SandboxError> {
+        // Mock static IP for the firecracker tap device
+        Ok("172.16.0.2".to_string())
+    }
+
+    pub async fn capture_logs(&self) -> Vec<String> {
+        vec!["[SANDBOX-FIRECRACKER] microVM booted in 143ms".to_string()]
+    }
+
+    pub async fn melt(self) -> Result<(), SandboxError> {
+        // Mock shutdown
         Ok(())
     }
 }

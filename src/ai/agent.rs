@@ -551,6 +551,7 @@ impl Agent {
                     PolicyContext::Autonomous,
                     Some(jid.as_u64()),
                     false,
+                    None,
                 )
                 .await
             {
@@ -663,6 +664,7 @@ impl Agent {
                     PolicyContext::Autonomous,
                     Some(jid.as_u64()),
                     false,
+                    None,
                 )
                 .await
             {

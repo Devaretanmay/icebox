@@ -1,21 +1,21 @@
 use icebox::core::executor::ModuleExecutor;
 use icebox::core::module::Capability;
 use icebox::core::safety::{Charter, PolicyContext, PolicyRule, RiskLevel, ScopeManager};
-use icebox::core::sandbox::Sandbox;
+use icebox::core::sandbox::{DockerSandbox, SandboxEngineType};
 
 #[tokio::test]
 async fn test_sandbox_docker_availability() {
-    let available = Sandbox::is_available();
+    let available = DockerSandbox::is_available();
     println!("Docker available: {}", available);
 }
 
 #[tokio::test]
 async fn test_sandbox_docker_lifecycle() {
-    if !Sandbox::is_available() {
+    if !DockerSandbox::is_available() {
         println!("Skipping docker lifecycle test because daemon is unavailable");
         return;
     }
-    let sandbox = Sandbox::freeze("127.0.0.1", "alpine:3.20")
+    let sandbox = DockerSandbox::freeze("127.0.0.1", "alpine:3.20")
         .await
         .expect("freeze");
     assert!(!sandbox.container_id().is_empty());
@@ -49,6 +49,7 @@ async fn test_sandbox_executor_integration() {
             PolicyContext::Cli,
             None,
             true,
+            None,
         )
         .await
         .unwrap();

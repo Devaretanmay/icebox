@@ -195,6 +195,7 @@ mod tests {
                 PolicyContext::Cli,
                 None,
                 false,
+                None,
             )
             .await;
         assert!(
@@ -227,6 +228,7 @@ mod tests {
                 PolicyContext::Cli,
                 None,
                 false,
+                None,
             )
             .await;
         assert!(

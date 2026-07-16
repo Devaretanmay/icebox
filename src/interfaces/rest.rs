@@ -57,6 +57,8 @@ struct RunPayload {
     #[serde(default)]
     sandbox: bool,
     #[serde(default)]
+    engine: Option<String>,
+    #[serde(default)]
     options: std::collections::HashMap<String, serde_json::Value>,
 }
 
@@ -335,6 +337,23 @@ async fn run_module(
     let job_id = job.id;
     fw.jobs.register(job);
 
+    let engine = if let Some(e) = payload.engine {
+        match e.to_lowercase().as_str() {
+            "docker" => Some(crate::core::sandbox::SandboxEngineType::Docker),
+            "firecracker" => Some(crate::core::sandbox::SandboxEngineType::Firecracker),
+            _ => return Json(RunResponse {
+                job_id: 0,
+                session_id: None,
+                success: false,
+                data: serde_json::Value::Null,
+                preflight: None,
+                error: Some(format!("unknown engine {e}")),
+            }),
+        }
+    } else {
+        None
+    };
+
     let result = fw
         .executor
         .execute(
@@ -345,6 +364,7 @@ async fn run_module(
             PolicyContext::Rest,
             Some(job_id.as_u64()),
             payload.sandbox,
+            engine,
         )
         .await;
 
@@ -781,6 +801,7 @@ async fn approve_approval(
             PolicyContext::Rest,
             None,
             false,
+            None,
         )
         .await
     {

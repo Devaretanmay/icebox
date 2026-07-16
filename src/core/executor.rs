@@ -143,6 +143,7 @@ impl ModuleExecutor {
         context: PolicyContext,
         job_id: Option<u64>,
         sandbox: bool,
+        engine: Option<crate::core::sandbox::SandboxEngineType>,
     ) -> Result<ModuleResult, ExecutorError> {
         let pf = self.preflight(loaded, target, destructive_override, approved, context);
         let policy = self.policy(context);
@@ -164,7 +165,7 @@ impl ModuleExecutor {
             "executor: preflight passed"
         );
         let result = if sandbox {
-            self.run_sandboxed(loaded, target).await
+            self.run_sandboxed(loaded, target, engine.unwrap_or(crate::core::sandbox::SandboxEngineType::Docker)).await
         } else {
             loaded.module.run().await?
         };
@@ -220,14 +221,11 @@ impl ModuleExecutor {
         &self,
         loaded: &crate::core::module::LoadedModule,
         target: &str,
+        engine: crate::core::sandbox::SandboxEngineType,
     ) -> ModuleResult {
         use crate::core::sandbox::Sandbox;
-        let image = loaded
-            .info
-            .sandbox_image
-            .as_deref()
-            .unwrap_or("alpine:3.20");
-        match Sandbox::freeze(target, image).await {
+        let image = loaded.info.sandbox_image.as_deref().unwrap_or("alpine:3.20");
+        match Sandbox::freeze(engine, target, image).await {
             Ok(sandbox) => {
                 info!(
                     container = %sandbox.container_id(),
@@ -258,7 +256,7 @@ impl ModuleExecutor {
                     Err(e) => ModuleResult {
                         error: Some(format!("Failed to get sandbox IP: {e}")),
                         ..Default::default()
-                    }
+                    },
                 };
 
                 let logs = sandbox.capture_logs().await;

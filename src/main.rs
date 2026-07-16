@@ -537,6 +537,7 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
     };
     let mut approved = false;
     let mut sandbox = false;
+    let mut engine = None;
     let mut tp = a;
     while let Some(first) = tp.first().copied() {
         if first == "--approve" {
@@ -545,6 +546,21 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
         } else if first == "--sandbox" {
             sandbox = true;
             tp = &tp[1..];
+        } else if first == "--engine" {
+            if let Some(e) = tp.get(1) {
+                engine = match e.to_lowercase().as_str() {
+                    "docker" => Some(icebox::core::sandbox::SandboxEngineType::Docker),
+                    "firecracker" => Some(icebox::core::sandbox::SandboxEngineType::Firecracker),
+                    _ => {
+                        println!("unknown engine: {e}");
+                        return;
+                    }
+                };
+                tp = &tp[2..];
+            } else {
+                println!("--engine requires a value");
+                return;
+            }
         } else {
             break;
         }
@@ -589,6 +605,7 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
             PolicyContext::Cli,
             Some(jid.as_u64()),
             sandbox,
+            engine,
         )
         .await
     {
@@ -1096,7 +1113,7 @@ async fn cmd_approve(a: &[&str], fw: SharedFramework) {
             for (k, v) in &req.options {
                 let _ = loaded.module.set_option(k, v);
             }
-            match g.executor.execute(&loaded, &req.target, None, true, PolicyContext::Cli, None, false).await {
+            match g.executor.execute(&loaded, &req.target, None, true, PolicyContext::Cli, None, false, None).await {
                 Ok(_) => println!("approved + executed: #{id}"),
                 Err(e) => println!("approved but execute failed: {e}"),
             }

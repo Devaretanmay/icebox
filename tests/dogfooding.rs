@@ -61,6 +61,7 @@ async fn run_through_seam(
             PolicyContext::Autonomous,
             Some(jid.as_u64()),
             false,
+            None,
         )
         .await;
     let decisions_after = g.executor.decisions.len();
@@ -1169,6 +1170,7 @@ async fn governed_vuln_scan_blocks_high_cvss_exploit() {
             PolicyContext::Autonomous,
             None,
             false,
+            None,
         )
         .await
     {

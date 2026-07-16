@@ -24,6 +24,7 @@ async fn test_sandbox_bypass_and_mock_execution() {
             PolicyContext::Cli,
             None,
             false,
+            None,
         )
         .await;
     assert!(res_no_sandbox.is_err());
@@ -37,6 +38,7 @@ async fn test_sandbox_bypass_and_mock_execution() {
             PolicyContext::Cli,
             None,
             true,
+            None,
         )
         .await
         .unwrap();
