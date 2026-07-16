@@ -7,7 +7,6 @@ pub struct OllamaClient {
     model: String,
 }
 
-/// `retryable` distinguishes transient failures (5xx) from deterministic ones (4xx).
 pub struct ChatError {
     pub retryable: bool,
     pub message: String,
@@ -62,7 +61,6 @@ impl OllamaClient {
         }
     }
 
-    /// Send a chat request. Retries up to 3 times with exponential backoff on transient errors.
     pub async fn chat(
         &self,
         messages: Vec<Message>,
@@ -122,7 +120,6 @@ impl OllamaClient {
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            // 4xx are deterministic (bad request, model not found, auth)  -  don't retry.
             let retryable = status.is_server_error();
             return Err(ChatError {
                 retryable,

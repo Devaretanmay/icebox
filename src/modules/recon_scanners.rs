@@ -33,7 +33,7 @@ fn mysql_parse_greeting(data: &[u8]) -> Option<(String, Vec<u8>, u8, Vec<u8>)> {
     }
     let payload =
         if data.len() > 4 && (data[0] as usize + 1 + data[1] as usize * 256 + 1) <= data.len() {
-            &data[4..] // skip 3-byte length + 1-byte seq
+            &data[4..]
         } else {
             data
         };
@@ -114,11 +114,11 @@ fn mysql_native_password(password: &str, scramble: &[u8]) -> Vec<u8> {
 }
 
 fn mysql_build_handshake(username: &str, auth_response: &[u8]) -> Vec<u8> {
-    let caps: u32 = 0x08820F; // PROTOCOL_41 | SECURE_CONNECTION | PLUGIN_AUTH | LONG_PASSWORD | CONNECT_WITH_DB | TRANSACTIONS
+    let caps: u32 = 0x08820F;
     let mut pkt = Vec::new();
     pkt.extend_from_slice(&caps.to_le_bytes());
-    pkt.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]); // max packet size = 1MB
-    pkt.push(0x2D); // utf8_general_ci
+    pkt.extend_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+    pkt.push(0x2D);
     pkt.extend_from_slice(&[0x00; 23]);
 
     pkt.extend_from_slice(username.as_bytes());
@@ -781,7 +781,6 @@ fn dns_parse_response(data: &[u8]) -> Result<Vec<serde_json::Value>, ModuleError
 
         let rdata = match rtype {
             1 => {
-                // A
                 if rdlength >= 4 {
                     Some(serde_json::Value::String(format!(
                         "{}.{}.{}.{}",
@@ -795,7 +794,6 @@ fn dns_parse_response(data: &[u8]) -> Result<Vec<serde_json::Value>, ModuleError
                 }
             }
             28 => {
-                // AAAA
                 if rdlength >= 16 {
                     let ip = std::net::Ipv6Addr::from(
                         <[u8; 16]>::try_from(&data[pos..pos + 16]).unwrap_or([0u8; 16]),
@@ -806,28 +804,24 @@ fn dns_parse_response(data: &[u8]) -> Result<Vec<serde_json::Value>, ModuleError
                 }
             }
             5 => {
-                // CNAME
                 let mut p = pos;
                 dns_decode_name(data, &mut p)
                     .ok()
                     .map(serde_json::Value::String)
             }
             2 => {
-                // NS
                 let mut p = pos;
                 dns_decode_name(data, &mut p)
                     .ok()
                     .map(serde_json::Value::String)
             }
             15 => {
-                // MX
                 let pref = u16::from_be_bytes([data[pos], data[pos + 1]]);
                 let mut p = pos + 2;
                 let target = dns_decode_name(data, &mut p).unwrap_or_default();
                 Some(serde_json::json!({"preference": pref, "target": target}))
             }
             6 => {
-                // SOA
                 let mut p = pos;
                 let mname = dns_decode_name(data, &mut p).unwrap_or_default();
                 let rname = dns_decode_name(data, &mut p).unwrap_or_default();
@@ -840,7 +834,6 @@ fn dns_parse_response(data: &[u8]) -> Result<Vec<serde_json::Value>, ModuleError
                 }
             }
             16 => {
-                // TXT
                 if rdlength > 0 {
                     let txt_len = data[pos] as usize;
                     let txt = String::from_utf8_lossy(
@@ -853,7 +846,6 @@ fn dns_parse_response(data: &[u8]) -> Result<Vec<serde_json::Value>, ModuleError
                 }
             }
             33 => {
-                // SRV
                 let mut p = pos;
                 if p + 6 <= data.len() {
                     let priority = u16::from_be_bytes([data[p], data[p + 1]]);
@@ -950,7 +942,6 @@ impl Module for DnsZoneTransfer {
             10000
         });
 
-        // Use configured server or default nameservers
         let nameservers: Vec<&str> = if self.server.is_empty() {
             vec!["8.8.8.8", "1.1.1.1", "208.67.222.222"]
         } else {
@@ -999,7 +990,7 @@ impl Module for DnsZoneTransfer {
                 continue;
             }
 
-            let dns_msg = &buf[2..n]; // skip 2-byte length prefix
+            let dns_msg = &buf[2..n];
             match dns_parse_response(dns_msg) {
                 Ok(records) => {
                     if !records.is_empty() {
@@ -1572,7 +1563,6 @@ fn ber_oid(components: &[u32]) -> Vec<u8> {
     if components.len() < 2 {
         return ber_tag(0x06, &[]);
     }
-    // First two components: 40*first + second
     encoded.push((40 * components[0] + components[1]) as u8);
     for &c in &components[2..] {
         if c < 128 {
@@ -1613,13 +1603,13 @@ fn snmp_build_get_request(community: &str, oid: &[u32], request_id: i32) -> Vec<
 
     let mut pdu_inner = Vec::new();
     pdu_inner.extend_from_slice(&ber_integer(request_id));
-    pdu_inner.extend_from_slice(&ber_integer(0)); // error-status
-    pdu_inner.extend_from_slice(&ber_integer(0)); // error-index
+    pdu_inner.extend_from_slice(&ber_integer(0));
+    pdu_inner.extend_from_slice(&ber_integer(0));
     pdu_inner.extend_from_slice(&varbind_list);
-    let pdu = ber_context_specific(0, &pdu_inner); // GetRequest = [0]
+    let pdu = ber_context_specific(0, &pdu_inner);
 
     let mut msg_inner = Vec::new();
-    msg_inner.extend_from_slice(&ber_integer(1)); // v2c
+    msg_inner.extend_from_slice(&ber_integer(1));
     msg_inner.extend_from_slice(&ber_octet_string(community.as_bytes()));
     msg_inner.extend_from_slice(&pdu);
     ber_sequence(&msg_inner)
@@ -1700,56 +1690,46 @@ fn asn1_get_value(data: &[u8], pos: &mut usize) -> Result<Vec<u8>, ModuleError> 
 
 fn snmp_parse_response(data: &[u8]) -> Result<String, ModuleError> {
     let mut pos = 0;
-    // Outer SEQUENCE
     if pos >= data.len() || data[pos] != 0x30 {
         return Err(ModuleError::Other("not an ASN.1 SEQUENCE".into()));
     }
     let _outer_val = asn1_get_value(data, &mut pos)?;
 
-    // Reset and skip manually (we've consumed the outer sequence)
     let mut p = 0;
-    asn1_skip_tlv(data, &mut p)?; // outer SEQUENCE
-                                  // Inside: version INTEGER + community OCTET STRING + data
-    asn1_skip_tlv(data, &mut p)?; // version
-    asn1_skip_tlv(data, &mut p)?; // community
-                                  // data: should be [0xA2] GetResponse
+    asn1_skip_tlv(data, &mut p)?;
+    asn1_skip_tlv(data, &mut p)?;
+    asn1_skip_tlv(data, &mut p)?;
     if p >= data.len() || data[p] != 0xA2 {
         return Err(ModuleError::Other("expected GetResponse PDU".into()));
     }
-    asn1_get_value(data, &mut p)?; // skip PDU
+    asn1_get_value(data, &mut p)?;
     let mut pp = 0;
-    asn1_skip_tlv(data, &mut pp)?; // outer seq
-    asn1_skip_tlv(data, &mut pp)?; // version
-    asn1_skip_tlv(data, &mut pp)?; // community
-                                   // At GetResponse PDU
+    asn1_skip_tlv(data, &mut pp)?;
+    asn1_skip_tlv(data, &mut pp)?;
+    asn1_skip_tlv(data, &mut pp)?;
     if pp >= data.len() || (data[pp] != 0xA2 && data[pp] != 0xA0) {
         return Err(ModuleError::Other("expected SNMP PDU".into()));
     }
     let pdu_val = asn1_get_value(data, &mut pp)?;
-    // Parse inside PDU: request-id, error-status, error-index
     let mut pdu_pos = 0;
-    asn1_skip_tlv(&pdu_val, &mut pdu_pos)?; // request-id (int)
-    asn1_skip_tlv(&pdu_val, &mut pdu_pos)?; // error-status (int)
-    asn1_skip_tlv(&pdu_val, &mut pdu_pos)?; // error-index (int)
-                                            // varbind-list (sequence)
+    asn1_skip_tlv(&pdu_val, &mut pdu_pos)?;
+    asn1_skip_tlv(&pdu_val, &mut pdu_pos)?;
+    asn1_skip_tlv(&pdu_val, &mut pdu_pos)?;
     if pdu_pos >= pdu_val.len() || pdu_val[pdu_pos] != 0x30 {
         return Err(ModuleError::Other("expected var-bind-list".into()));
     }
     let vb_list = asn1_get_value(&pdu_val, &mut pdu_pos)?;
-    // var-bind (sequence) inside
     let mut vb_pos = 0;
     if vb_pos >= vb_list.len() || vb_list[vb_pos] != 0x30 {
         return Err(ModuleError::Other("expected var-bind".into()));
     }
     let vb_val = asn1_get_value(&vb_list, &mut vb_pos)?;
-    // OID + value
     let mut vv = 0;
-    asn1_skip_tlv(&vb_val, &mut vv)?; // OID
+    asn1_skip_tlv(&vb_val, &mut vv)?;
     if vv >= vb_val.len() {
         return Err(ModuleError::Other("no value in var-bind".into()));
     }
     let value = asn1_get_value(&vb_val, &mut vv)?;
-    // Try to interpret as string
     if value
         .iter()
         .all(|&b| (0x20..=0x7E).contains(&b) || b == b' ')
@@ -1763,13 +1743,11 @@ fn snmp_parse_response(data: &[u8]) -> Result<String, ModuleError> {
 }
 
 fn asn1_parse_for_text(data: &[u8]) -> Option<String> {
-    // Broad search within the response for readable text that might be sysDescr
     for window in data.windows(4) {
         if window == [0x04, 0x81] || window == [0x04, 0x82] {
             break;
         }
     }
-    // Simpler approach: find all printable strings > 4 chars
     let text = String::from_utf8_lossy(data);
     let mut candidates: Vec<String> = text
         .split(|c: char| !c.is_ascii_graphic() && c != ' ')
@@ -1891,10 +1869,8 @@ impl Module for SnmpScanner {
             match snmp_parse_response(response) {
                 Ok(description) => {
                     found_communities.push((community.to_string(), description));
-                    // Found at least one working community, continue checking others
                 }
                 Err(_) => {
-                    // Try text-based search for sysDescr
                     if let Some(text) = asn1_parse_for_text(response) {
                         found_communities.push((community.to_string(), text));
                     }
@@ -2006,7 +1982,6 @@ fn bson_find_string(doc: &[u8], field: &str) -> Option<String> {
                 _ => None,
             };
         }
-        // Skip value
         pos = match etype {
             0x01 => {
                 if pos + 8 <= doc.len() {
@@ -2113,7 +2088,7 @@ fn mongo_body(response: &[u8]) -> Option<&[u8]> {
     let op_code = i32::from_le_bytes([response[12], response[13], response[14], response[15]]);
     if op_code != 1 {
         return None;
-    } // OP_REPLY
+    }
     if response.len() < 36 {
         return None;
     }
@@ -2441,7 +2416,6 @@ impl Module for EsScanner {
             evidence.push(format!("es/tagline:{t}"));
         }
 
-        // Check cluster health if requested
         let mut health_status = String::new();
         if self.check_health {
             if let Ok(health_raw) =
@@ -2490,7 +2464,6 @@ fn pg_startup_message(user: &str) -> Vec<u8> {
 }
 
 fn pg_md5_auth(user: &str, password: &str, salt: &[u8]) -> String {
-    // PostgreSQL MD5: md5(md5(password + user) + salt)
     let inner = md5::compute(format!("{password}{user}").as_bytes());
     let mut combined = format!("{inner:x}").into_bytes();
     combined.extend_from_slice(salt);
@@ -2633,7 +2606,6 @@ impl Module for PostgresScanner {
             };
 
             if response.is_empty() || response[0] == b'E' {
-                // ErrorResponse
                 continue;
             }
 
@@ -2645,14 +2617,11 @@ impl Module for PostgresScanner {
                     i32::from_be_bytes([response[5], response[6], response[7], response[8]]);
                 let auth_name = pg_auth_type_name(auth_t);
                 if server_version.is_empty() {
-                    // Try to extract version from ParameterStatus messages that follow
                     auth_type = auth_name.to_string();
                 }
 
                 if auth_t == 0 {
-                    // AuthenticationOk
                     found_creds.push((user.to_string(), pass.to_string()));
-                    // Read ParameterStatus messages
                     tokio::time::timeout(timeout, stream.readable()).await.ok();
                     let mut buf2 = vec![0u8; 4096];
                     if let Ok(Ok(_)) = tokio::time::timeout(timeout, stream.readable()).await {
@@ -2670,7 +2639,6 @@ impl Module for PostgresScanner {
                         }
                     }
                 } else if auth_t == 3 && creds_to_try.len() == 1 {
-                    // Cleartext password - send it
                     let pass_pkt = format!("p{}\x00", pass);
                     let len = (4 + pass_pkt.len()) as u32;
                     let mut auth_msg = Vec::new();
@@ -2690,7 +2658,6 @@ impl Module for PostgresScanner {
                         }
                     }
                 } else if auth_t == 5 && creds_to_try.len() == 1 {
-                    // MD5 - send MD5 password
                     let salt = &response[9..13];
                     let md5_hash = pg_md5_auth(user, pass, salt);
                     let pass_bytes = md5_hash.as_bytes();
@@ -2714,8 +2681,6 @@ impl Module for PostgresScanner {
                     }
                 }
             } else if response[0] == b'N' || response[0] == b'S' {
-                // NoticeResponse or ParameterStatus - could be successful
-                // Check if more data follows
             }
         }
 
@@ -2876,7 +2841,6 @@ impl Module for SmtpScanner {
         findings.push(format!("banner: {banner_line}"));
         evidence.push(format!("smtp/banner:{banner_line}"));
 
-        // EHLO
         smtp_write(&stream, "EHLO icebox\r\n", timeout).await.ok();
         let ehlo_resp = smtp_read(&stream, timeout).await;
         let ehlo_lines: Vec<&str> = ehlo_resp.lines().collect();
@@ -2897,12 +2861,10 @@ impl Module for SmtpScanner {
                 findings.push(format!("capabilities: {}", caps.join(", ")));
             }
 
-            // AUTH detection
             if caps.iter().any(|c| c.to_uppercase().contains("AUTH")) {
                 evidence.push("smtp/auth_available".into());
             }
 
-            // Open relay check
             if self.check_relay {
                 smtp_write(&stream, "MAIL FROM:<test@icebox.local>\r\n", timeout)
                     .await
@@ -2922,7 +2884,6 @@ impl Module for SmtpScanner {
                 }
             }
 
-            // VRFY check
             if self.check_vrfy {
                 smtp_write(&stream, "VRFY root\r\n", timeout).await.ok();
                 let vrfy = smtp_read(&stream, timeout).await;

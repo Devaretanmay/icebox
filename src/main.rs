@@ -1,11 +1,9 @@
-//! Interactive CLI for ICEBOX.
-
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-const COLOR_ORANGE: &str = "\x1b[38;2;232;84;42m"; // #E8542A
-const COLOR_TEAL: &str = "\x1b[38;2;46;140;147m"; // #2E8C93
-const COLOR_SLATE: &str = "\x1b[38;2;74;92;104m"; // #4A5C68
+const COLOR_ORANGE: &str = "\x1b[38;2;232;84;42m";
+const COLOR_TEAL: &str = "\x1b[38;2;46;140;147m";
+const COLOR_SLATE: &str = "\x1b[38;2;74;92;104m";
 const COLOR_RESET: &str = "\x1b[0m";
 
 use icebox::core::executor::ModuleExecutor;
@@ -54,14 +52,8 @@ async fn main() -> anyhow::Result<()> {
         target: None,
     }));
 
-    // The framework starts with an unaccepted charter and empty scope, so the
-    // safety gates block every run until the operator runs `charter accept`
-    // and adds targets with `scope add`.
-
     let fw_api = fw.clone();
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 8443));
-    // The REST API runs on its own OS thread with a dedicated runtime so the
-    // REPL can keep owning the async runtime on the main thread.
     let api_handle = std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().expect("API rt");
         rt.block_on(async { icebox::interfaces::rest::serve(fw_api, addr).await })
@@ -90,8 +82,6 @@ async fn main() -> anyhow::Result<()> {
         let a = &p[1..];
         let mut s = state.lock().await;
         let fw_arc = s.fw.clone();
-        // Commands that lock the framework themselves (agent/save/load)
-        // must NOT be called while the framework lock is held below.
         if matches!(
             c.as_str(),
             "agent" | "save" | "load" | "validate" | "role" | "pack" | "approve" | "campaign"

@@ -48,6 +48,12 @@ class IceboxClient:
     def get_module(self, name: str) -> dict:
         return self._get(f"/api/v1/modules/{name}")
 
+    def accept_charter(self, target: str) -> dict:
+        return self._post("/api/v1/charter", {"engagement": target})
+
+    def add_scope(self, target: str) -> dict:
+        return self._post("/api/v1/scope", {"target": target})
+
     def run_module(
         self,
         name: str,

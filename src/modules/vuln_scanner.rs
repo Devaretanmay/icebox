@@ -1,5 +1,3 @@
-//! Dependency vulnerability scanner: queries OSV.dev, enriches with EPSS/KEV, supports watch mode.
-
 use crate::core::module::{Module, ModuleError, ModuleResult};
 use async_trait::async_trait;
 use icebox_macro::module;
@@ -123,8 +121,6 @@ struct VulnerabilityFinding {
     cvss_v31: Option<f64>,
     epss: Option<f64>,
     kev: bool,
-    /// True when this CVE was not present in the previous scan cycle
-    /// (watch-mode delta detection).
     #[serde(default)]
     new_finding: bool,
     severity: String,
@@ -141,7 +137,6 @@ impl VulnerabilityFinding {
         }
     }
 
-    /// A unique key for deduplication across scan cycles: package + CVE.
     fn key(&self) -> String {
         format!("{}/{}", self.package, self.cve)
     }
@@ -295,7 +290,19 @@ impl Module for VulnScanner {
         };
         let alert_on_new = self.alert_on_new_only;
 
-        let packages = fetch_cargo_metadata(&project_dir).await?;
+        let packages = match fetch_cargo_metadata(&project_dir).await {
+            Ok(p) => p,
+            Err(e) => {
+                return Ok(ModuleResult {
+                    success: false,
+                    finding: None,
+                    evidence: vec![],
+                    error: Some(e.to_string()),
+                    data: serde_json::Value::Null,
+                    session_id: None,
+                });
+            }
+        };
         if packages.is_empty() {
             return Ok(ModuleResult {
                 success: true,
@@ -404,8 +411,6 @@ impl Module for VulnScanner {
             for finding in &cycle.findings {
                 let key = finding.key();
                 if !seen.contains(&key) {
-                    // If this finding is globally new (appeared in a later cycle),
-                    // preserve the new_finding flag
                     let mut f = finding.clone();
                     if global_new_cves.iter().any(|n| n.key() == key) {
                         f.new_finding = true;
@@ -417,7 +422,6 @@ impl Module for VulnScanner {
         }
 
         let evidence: Vec<String> = if alert_on_new && !global_new_cves.is_empty() {
-            // Only output new CVEs when alert_on_new_only is set
             global_new_cves
                 .iter()
                 .map(|f| format_new_evidence(f, true))
@@ -538,8 +542,6 @@ impl Module for VulnScanner {
     }
 }
 
-/// Format a single finding as a human-readable evidence string with optional
-/// `[NEW]` tag when the CVE was not present in a previous scan cycle.
 fn format_new_evidence(finding: &VulnerabilityFinding, is_new: bool) -> String {
     let new_flag = if is_new { " [NEW]" } else { "" };
     let kev_flag = if finding.kev { " [KEV]" } else { "" };
@@ -803,10 +805,8 @@ mod tests {
 
     #[test]
     fn test_delta_detection_basic() {
-        // Simulate two scan cycles manually: first scan, then second with new CVEs
         let mut seen: HashSet<String> = HashSet::new();
 
-        // Cycle 0: two findings
         let c0_findings = vec![
             VulnerabilityFinding {
                 cve: "CVE-2024-001".into(),
@@ -834,13 +834,11 @@ mod tests {
             },
         ];
 
-        // Register cycle 0 findings
         for f in &c0_findings {
             seen.insert(f.key());
         }
         assert_eq!(seen.len(), 2, "cycle 0 should register 2 CVEs");
 
-        // Cycle 1: same two plus one new
         let c1_findings = vec![
             VulnerabilityFinding {
                 cve: "CVE-2024-001".into(),
@@ -895,7 +893,6 @@ mod tests {
         assert_eq!(new_cves[0].package, "crate_c");
         assert!(new_cves[0].new_finding);
 
-        // Cycle 2: no new CVEs
         let c2_findings: Vec<VulnerabilityFinding> = vec![VulnerabilityFinding {
             cve: "CVE-2024-003".into(),
             package: "crate_c".into(),

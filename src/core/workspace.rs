@@ -92,8 +92,6 @@ impl WorkspaceSnapshot {
         Ok(snap)
     }
 
-    /// Replays snapshot state into a fresh Framework, advancing ID counters
-    /// past the highest restored IDs to prevent collisions.
     pub fn apply_to_framework(&self, fw: &mut Framework) {
         fw.executor.charter = self.charter.clone();
         fw.executor.scope = ScopeManager::new(self.scope_allow.clone());

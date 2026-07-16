@@ -1,5 +1,3 @@
-//! REST API surface for the ICEBOX Framework.
-
 use std::net::SocketAddr;
 
 use axum::extract::{Path, Query, State};
@@ -163,8 +161,6 @@ struct EvidenceQuery {
 }
 
 pub async fn serve(fw: SharedFramework, addr: SocketAddr) -> anyhow::Result<()> {
-    // Each route delegates to a handler; CORS is permissive because the API is
-    // meant for local tooling and the agent, not public network exposure.
     let app = Router::new()
         .route("/api/v1/modules", get(list_modules))
         .route("/api/v1/modules/{name}", get(get_module))
@@ -341,14 +337,16 @@ async fn run_module(
         match e.to_lowercase().as_str() {
             "docker" => Some(crate::core::sandbox::SandboxEngineType::Docker),
             "firecracker" => Some(crate::core::sandbox::SandboxEngineType::Firecracker),
-            _ => return Json(RunResponse {
-                job_id: 0,
-                session_id: None,
-                success: false,
-                data: serde_json::Value::Null,
-                preflight: None,
-                error: Some(format!("unknown engine {e}")),
-            }),
+            _ => {
+                return Json(RunResponse {
+                    job_id: 0,
+                    session_id: None,
+                    success: false,
+                    data: serde_json::Value::Null,
+                    preflight: None,
+                    error: Some(format!("unknown engine {e}")),
+                })
+            }
         }
     } else {
         None
@@ -389,7 +387,7 @@ async fn run_module(
                 success: r.success,
                 data: r.data.clone(),
                 preflight: Some(report),
-                error: None,
+                error: r.error.clone(),
             })
         }
         Err(e) => {
@@ -423,8 +421,6 @@ async fn run_agent(
     let planner = Box::new(LlmPlanner::new(&model));
     let mut agent = Agent::new(planner, fw, payload.target.clone(), RiskLevel::High);
     agent.set_approved(true);
-    // When approve=false the plan is gated through AlwaysApprove=false so the
-    // campaign stops before Execute; when true, plans auto-execute.
     if payload.approve {
         agent.set_plan_approver(Box::new(crate::ai::agent::AlwaysApprove));
     } else {
@@ -557,7 +553,6 @@ async fn evaluate_policy(
     Query(params): Query<PolicyQuery>,
 ) -> Json<serde_json::Value> {
     let fw = fw.lock().await;
-    // No module -> return the active policy set itself.
     let module = params.module.clone().unwrap_or_default();
     if module.is_empty() {
         return Json(

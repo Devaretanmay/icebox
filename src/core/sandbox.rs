@@ -6,7 +6,6 @@ use bollard::query_parameters::{
 use bollard::Docker;
 use futures_util::StreamExt;
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SandboxEngineType {
     Docker,
@@ -215,21 +214,12 @@ pub struct FirecrackerSandbox {
 impl FirecrackerSandbox {
     pub async fn freeze(target: &str, _image: &str) -> Result<Self, SandboxError> {
         if cfg!(target_os = "macos") {
-            return Err(SandboxError::UnsupportedOS("Firecracker (Linux KVM required)"));
+            return Err(SandboxError::UnsupportedOS(
+                "Firecracker (Linux KVM required)",
+            ));
         }
 
         let vm_id = format!("icebox-fc-{}", std::process::id());
-
-        // In a real implementation, we would use hyper or reqwest to send UDS HTTP requests to the
-        // firecracker binary's unix domain socket (/tmp/firecracker.socket). 
-        // 
-        // 1. PUT /boot-source (kernel vmlinux)
-        // 2. PUT /drives/rootfs (rootfs.ext4)
-        // 3. PUT /network-interfaces/eth0 (TAP device)
-        // 4. PUT /actions (InstanceStart)
-        
-        // For now, this is mocked as we expect to run on macOS during dev.
-        // It would panic or error if forced, but we gracefully return an UnsupportedOS error above.
 
         Ok(FirecrackerSandbox {
             vm_id,
@@ -246,7 +236,6 @@ impl FirecrackerSandbox {
     }
 
     pub async fn ip_address(&self) -> Result<String, SandboxError> {
-        // Mock static IP for the firecracker tap device
         Ok("172.16.0.2".to_string())
     }
 
@@ -255,7 +244,6 @@ impl FirecrackerSandbox {
     }
 
     pub async fn melt(self) -> Result<(), SandboxError> {
-        // Mock shutdown
         Ok(())
     }
 }

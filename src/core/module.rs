@@ -34,8 +34,6 @@ impl ModuleKind {
     }
 }
 
-/// Policy reasons over these instead of raw module kind so risk follows
-/// behavior, not label.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Capability {
@@ -70,8 +68,6 @@ impl Capability {
         }
     }
 
-    /// Maps capability to an access category (Read / Modify / Execute / Dump)
-    /// for the explainability report.
     pub fn intent(&self) -> Intent {
         match self {
             Capability::CredentialAccess => Intent::Dump,
@@ -81,7 +77,6 @@ impl Capability {
         }
     }
 
-    /// Default blast radius implied by the capability.
     pub fn impact(&self) -> RiskLevel {
         match self {
             Capability::NetworkScan | Capability::DataCollection | Capability::CloudEnumeration => {
@@ -95,7 +90,6 @@ impl Capability {
         }
     }
 
-    /// Fallback capabilities inferred from module kind when none are declared.
     pub fn from_kind(kind: ModuleKind) -> Vec<Capability> {
         match kind {
             ModuleKind::Scanner | ModuleKind::Auxiliary | ModuleKind::Analysis => {
@@ -179,7 +173,6 @@ pub struct ModuleInfo {
 }
 
 impl ModuleInfo {
-    /// Declared impact if set, otherwise the max of kind and capability-derived risk.
     pub fn effective_impact(&self) -> RiskLevel {
         if let Some(i) = self.impact {
             return i;
@@ -193,7 +186,6 @@ impl ModuleInfo {
             .max(base)
     }
 
-    /// Single declared intent if set, otherwise one intent per capability.
     pub fn effective_intents(&self) -> Vec<Intent> {
         if let Some(i) = self.intent {
             return vec![i];
@@ -239,7 +231,6 @@ pub trait Module: Send + Sync {
     }
 }
 
-/// Plain `fn` pointers so entries are const-initializable and collectable by `linkme`.
 #[derive(Clone, Copy)]
 pub struct ModuleEntry {
     pub info: fn() -> ModuleInfo,

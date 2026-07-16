@@ -58,7 +58,6 @@ pub struct GovernanceConfig {
     pub role: Role,
     #[serde(default)]
     pub policy_set: PolicySet,
-    /// Per-task-name rate ceilings, in invocations per minute.
     #[serde(default)]
     pub rate_limits: HashMap<String, u64>,
 }
@@ -110,8 +109,6 @@ struct RuntimeState {
 }
 
 impl RuntimeState {
-    /// Enforces the per-name rate ceiling (fixed 60s window). Returns a denial
-    /// reason and consumes a token when allowed.
     fn check_rate_limit(&mut self, name: &str) -> Option<String> {
         let limit = *self.config.rate_limits.get(name)?;
         let now = now_secs();
@@ -132,7 +129,6 @@ fn derive_intents(caps: &[Capability]) -> Vec<Intent> {
     caps.iter().map(|c| c.intent()).collect()
 }
 
-/// A governed runtime backed by `Arc<Mutex<...>>`, safe to share across tasks.
 #[derive(Debug, Clone)]
 pub struct GovernanceRuntime {
     state: Arc<Mutex<RuntimeState>>,
@@ -143,8 +139,6 @@ impl GovernanceRuntime {
         GovernanceBuilder::new()
     }
 
-    /// Supervised run -- destructive / high-risk tasks and any `RequireApproval`
-    /// rule come back as `NeedsApproval` and are queued rather than executed.
     pub async fn execute<F, Fut>(&self, task: TaskSpec, action: F) -> GovernedOutcome
     where
         F: FnOnce() -> Fut,
@@ -153,8 +147,6 @@ impl GovernanceRuntime {
         self.enforce(task, action, false).await
     }
 
-    /// Unsupervised run -- policy still hard-blocks denials, but
-    /// approval-gated tasks are auto-granted and run.
     pub async fn run<F, Fut>(&self, task: TaskSpec, action: F) -> GovernedOutcome
     where
         F: FnOnce() -> Fut,
@@ -279,8 +271,6 @@ impl GovernanceRuntime {
         crate::core::governance::audit_to_csv(&d)
     }
 
-    /// Live audit stream -- each decision is delivered to every subscriber
-    /// as it happens.
     pub async fn audit_stream(&self) -> broadcast::Receiver<DecisionRecord> {
         self.state.lock().await.audit_tx.subscribe()
     }

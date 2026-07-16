@@ -1,5 +1,3 @@
-//! Multi-agent orchestration: one Agent per target, shared audit trail.
-
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinSet;
 
@@ -42,7 +40,6 @@ impl Orchestrator {
         self.approved = v;
     }
 
-    /// Run one Agent per target concurrently. `planner_factory` builds a fresh planner per agent.
     pub async fn run<F>(&self, targets: &[String], planner_factory: F) -> CampaignReport
     where
         F: Fn() -> Box<dyn Planner> + Send + Sync,
@@ -94,7 +91,6 @@ impl Orchestrator {
     }
 }
 
-/// Deterministic planner for tests and scripted runs.
 pub struct StaticPlanner {
     pub actions: Vec<Action>,
 }

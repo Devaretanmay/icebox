@@ -1,5 +1,3 @@
-//! Network and service scanners: ARP, SMB, FTP, SSH, RDP, VNC, Telnet, Redis.
-
 use crate::core::module::{Module, ModuleError, ModuleResult};
 use async_trait::async_trait;
 use icebox_macro::module;
@@ -250,7 +248,6 @@ fn parse_smb_negotiate_response(data: &[u8]) -> (Option<String>, Option<u16>) {
         if data.len() > bcc_start + 1 {
             let bcc = u16::from_le_bytes([data[bcc_start], data[bcc_start + 1]]);
             let version = if wct == 1 {
-                // SMBv2 response
                 if data.len() >= 33 + wct * 2 + 2 + 4 {
                     let dialect_rev =
                         u16::from_le_bytes([data[bcc_start + 2 + 32], data[bcc_start + 2 + 33]]);
@@ -369,7 +366,6 @@ impl Module for SmbScanner {
             findings.push("SMB service detected (unrecognized version)".into());
         }
 
-        // Null session check via SMBv1 TreeConnect to IPC$
         let null_session = if self.check_null_session {
             let tcon_req = build_smb_treeconnect("\\\\10.0.0.1\\IPC$", 0);
             let _ = stream.try_write(&tcon_req);
@@ -685,7 +681,6 @@ impl Module for SshScanner {
         let resp = String::from_utf8_lossy(raw).to_string();
         let banner = resp.lines().next().unwrap_or("").trim().to_string();
 
-        // Try to identify if we also got a KEX init packet (binary after banner)
         let has_kex = n > banner.len() + 1;
 
         let mut evidence = Vec::new();
@@ -1241,7 +1236,6 @@ impl Module for RdpScanner {
                 Err(_) => return Err(ModuleError::Other("connection timed out".into())),
             };
 
-        // Send request with all protocol flags to see what the server picks
         let req = rdp_build_neg_req(PROTOCOL_RDP | PROTOCOL_SSL | PROTOCOL_NLA);
         if tokio::time::timeout(timeout, stream.writable())
             .await
@@ -1434,7 +1428,6 @@ impl Module for VncScanner {
                         evidence.push("vnc/no_auth".into());
                     }
                 } else if sec_count == 0 {
-                    // RFB 3.3 style: single uint32 auth type
                     if n2 >= 4 {
                         let auth_type = u32::from_le_bytes([buf[1], buf[2], buf[3], buf[4]]);
                         let name = match auth_type {
@@ -1477,7 +1470,6 @@ fn strip_telnet_negotiation(data: &[u8]) -> Vec<u8> {
         if data[i] == IAC && i + 2 < data.len() {
             match data[i + 1] {
                 TN_SB => {
-                    // Subnegotiation: skip to IAC SE
                     let mut j = i + 2;
                     while j + 1 < data.len() {
                         if data[j] == IAC && data[j + 1] == TN_SE {
@@ -1491,7 +1483,6 @@ fn strip_telnet_negotiation(data: &[u8]) -> Vec<u8> {
                     }
                 }
                 _ => {
-                    // DO/DONT/WILL/WONT: 3 bytes total
                     i += 3;
                 }
             }

@@ -132,7 +132,6 @@ impl JobManager {
         }
     }
 
-    /// CAS loop to avoid ID collisions after restoring from a workspace snapshot.
     pub fn advance_counter(min: u64) {
         let mut prev = NEXT_JOB_ID.load(Ordering::Relaxed);
         while prev <= min {

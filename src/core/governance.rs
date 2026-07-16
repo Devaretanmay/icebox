@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use crate::core::module::{Capability, Intent};
 use crate::core::safety::{DecisionRecord, PolicyDecision, PolicyRule};
 
-/// Ordered so a required level can be compared with `>=`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
@@ -53,7 +52,6 @@ impl PolicyPack {
         }
     }
 
-    /// Bumps version on every mutation so clients can detect policy drift.
     pub fn set_rules(&mut self, rules: Vec<PolicyRule>) {
         self.rules = rules;
         self.version += 1;
@@ -84,8 +82,6 @@ pub struct ApprovalRequest {
     pub module: String,
     pub target: String,
     pub reason: String,
-    /// Options to replay when the request is approved, reproducing the exact
-    /// prior invocation rather than running with defaults.
     #[serde(default)]
     pub options: HashMap<String, String>,
     pub status: ApprovalStatus,
@@ -164,7 +160,6 @@ fn csv_field(s: &str) -> String {
     }
 }
 
-/// Render audit records as CSV for compliance export.
 pub fn audit_to_csv(records: &[DecisionRecord]) -> String {
     let mut out =
         String::from("at,target,module,capabilities,intents,impact,context,decision,reason\n");

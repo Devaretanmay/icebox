@@ -10,8 +10,6 @@ use crate::core::session::{Session, SessionId, SessionKind};
 
 use crate::ai::ollama::OllamaClient;
 
-// -- Phase machine --
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
     Idle,
@@ -36,8 +34,6 @@ impl Phase {
         }
     }
 }
-
-// -- Action types --
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Action {
@@ -78,8 +74,6 @@ pub struct ReportOutput {
     pub recommendations: Vec<String>,
 }
 
-// -- Planner trait --
-
 #[async_trait::async_trait]
 pub trait Planner: Send + Sync {
     async fn analyze(&self, context: &str) -> anyhow::Result<AnalysisOutput>;
@@ -87,14 +81,10 @@ pub trait Planner: Send + Sync {
     async fn summarize(&self, context: &str) -> anyhow::Result<ReportOutput>;
 }
 
-// -- Plan approval (human-in-the-loop gating) --
-
-/// Decides whether the agent is allowed to execute a generated plan.
 pub trait PlanApprover: Send + Sync {
     fn approve(&self, actions: &[Action]) -> bool;
 }
 
-/// Auto-approve every plan (used in auto-approved mode).
 pub struct AlwaysApprove;
 impl PlanApprover for AlwaysApprove {
     fn approve(&self, _actions: &[Action]) -> bool {
@@ -102,7 +92,6 @@ impl PlanApprover for AlwaysApprove {
     }
 }
 
-/// Reject every plan; campaign stops before Execute so the operator can inspect.
 pub struct DenyPlan;
 impl PlanApprover for DenyPlan {
     fn approve(&self, _actions: &[Action]) -> bool {
@@ -144,7 +133,6 @@ impl PlanApprover for InteractiveApprover {
     }
 }
 
-/// Build a compact catalog of all registered modules for the LLM system prompt.
 pub fn build_module_catalog() -> String {
     let entries = crate::modules::discover();
     let mut lines = Vec::new();
@@ -182,15 +170,12 @@ pub fn build_module_catalog() -> String {
     lines.join("\n")
 }
 
-// -- LLM Planner --
-
 pub struct LlmPlanner {
     llm: OllamaClient,
     catalog: String,
 }
 
 impl LlmPlanner {
-    /// Build a planner with a precomputed module catalog for the system prompt.
     pub fn new_with_catalog(model: impl Into<String>, catalog: String) -> Self {
         LlmPlanner {
             llm: OllamaClient::new(model.into()),
@@ -326,7 +311,6 @@ impl Planner for LlmPlanner {
         match serde_json::from_str::<PlanOutput>(&cleaned) {
             Ok(plan) => Ok(plan.actions),
             Err(_) => {
-                // Fallback: ask without the JSON schema and extract the object.
                 let raw = self
                     .llm
                     .prompt(&self.system_prompt(), &prompt, None)
@@ -358,8 +342,6 @@ impl Planner for LlmPlanner {
         }
     }
 }
-
-// -- Agent --
 
 pub struct Agent {
     planner: Box<dyn Planner>,
@@ -411,7 +393,6 @@ impl Agent {
         self.plan_approver = Some(approver);
     }
 
-    /// Run the agent loop: Scan -> [Analyze -> Plan -> Execute]* -> Report.
     pub async fn run(&mut self) -> anyhow::Result<CampaignResult> {
         info!("agent: starting campaign against {}", self.target);
         self.phase = Phase::Scan;
@@ -425,7 +406,6 @@ impl Agent {
             self.phase = Phase::Plan;
             let actions = self.run_plan().await?;
 
-            // Plan gating (human-in-the-loop)
             let proceed = match &self.plan_approver {
                 Some(approver) => approver.approve(&actions),
                 None => true,
@@ -625,7 +605,6 @@ impl Agent {
                 action.module, action.target, action.reason
             ));
 
-            // Apply options to loaded module.
             let mut loaded_mut = loaded;
             for (k, v) in &action.options {
                 let _ = loaded_mut.module.set_option(k, v);
@@ -744,7 +723,6 @@ impl Agent {
             self.phase.as_str()
         );
 
-        // Structured scan results — only real data about the target.
         if self.scan_results.is_empty() {
             ctx.push_str("Initial Scan Results: NONE\n");
         } else {
@@ -816,7 +794,6 @@ impl Agent {
             ctx.push_str(&format!("Logs (last 40):\n{}\n", recent.join("\n")));
         }
 
-        // Truncate context to cap — keep header and tail, drop bulky middle.
         if ctx.len() > self.max_context_chars {
             if let Some(pos) = ctx.find("\n\n=== EXECUTED") {
                 let prefix = &ctx[..pos];
@@ -846,7 +823,6 @@ pub struct CampaignResult {
     pub report: String,
 }
 
-/// Strip markdown code fences from LLM output that wraps JSON.
 fn clean_json(raw: &str) -> String {
     let raw = raw.trim();
     if let Some(s) = raw.strip_prefix("```json") {

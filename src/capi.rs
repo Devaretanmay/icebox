@@ -1,5 +1,3 @@
-//! C ABI for the ICEBOX Governance SDK.
-
 #![allow(clippy::missing_safety_doc)]
 
 use std::ffi::{CStr, CString};

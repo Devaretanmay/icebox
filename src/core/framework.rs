@@ -6,7 +6,6 @@ use crate::core::governance::{ApprovalQueue, PolicyPackStore, Role};
 use crate::core::job::JobManager;
 use crate::core::session::SessionManager;
 
-/// Single source of truth for executor, sessions, jobs, and governance state.
 #[derive(Debug)]
 pub struct Framework {
     pub executor: ModuleExecutor,

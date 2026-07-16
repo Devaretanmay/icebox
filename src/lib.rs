@@ -1,5 +1,3 @@
-//! ICEBOX — governance seam for autonomous offensive security.
-
 use linkme::distributed_slice;
 
 #[distributed_slice]

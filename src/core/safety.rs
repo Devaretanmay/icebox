@@ -30,8 +30,6 @@ impl RiskLevel {
         }
     }
 
-    /// Maps module kind to a baseline risk level; the executor may raise this
-    /// based on options like a destructive flag.
     pub fn from_kind(kind: ModuleKind) -> RiskLevel {
         match kind {
             ModuleKind::Scanner | ModuleKind::Auxiliary | ModuleKind::Analysis => RiskLevel::Low,
@@ -141,7 +139,6 @@ impl<'de> Deserialize<'de> for CvssScore {
 }
 
 impl CvssScore {
-    /// Prefers v4.0, falls back to v3.1, else 0.0.
     pub fn effective_score(&self) -> f64 {
         self.cvss_v40.or(self.cvss_v31).unwrap_or(0.0)
     }
@@ -161,8 +158,6 @@ impl CvssScore {
         }
     }
 
-    /// Blends CVSS + EPSS + KEV into a single 0.0-10.0 value. EPSS adds up
-    /// to +2.0 (EPSS * 2) and KEV adds +3.0; clamped to 10.0.
     pub fn weighted_risk(&self) -> f64 {
         let base = self.effective_score();
         let epss_boost = self.epss.unwrap_or(0.0) * 2.0;
@@ -206,8 +201,6 @@ impl Charter {
     }
 }
 
-/// Allowlist of in-scope targets. Supports exact matches, trailing-`*`
-/// wildcards, and IPv4 CIDR blocks.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ScopeManager {
     pub allow: Vec<String>,
@@ -226,7 +219,6 @@ impl ScopeManager {
             if entry.is_empty() {
                 continue;
             }
-            // exact / wildcard / CIDR against the literal target
             if entry == target {
                 return true;
             }
@@ -238,7 +230,6 @@ impl ScopeManager {
             if entry.contains('/') && ipv4_in_cidr(target, entry) {
                 return true;
             }
-            // exact / CIDR against the target's resolved IPs
             for tip in &target_ips {
                 if entry == tip {
                     return true;
@@ -247,7 +238,6 @@ impl ScopeManager {
                     return true;
                 }
             }
-            // if the scope entry itself is a hostname, resolve it and compare
             if !is_literal_or_pattern(entry) {
                 for eip in resolve_ips(entry) {
                     if eip == target {
@@ -265,9 +255,6 @@ impl ScopeManager {
     }
 }
 
-/// Resolve a hostname to its IP strings. An already-literal IP is returned
-/// unchanged (no DNS). Used so that scoping `127.0.0.1` also admits a
-/// `localhost` target (and vice versa).
 fn resolve_ips(host: &str) -> Vec<String> {
     if host.parse::<Ipv4Addr>().is_ok() || host.parse::<Ipv6Addr>().is_ok() {
         return vec![host.to_string()];
@@ -461,9 +448,6 @@ pub struct DecisionRecord {
     pub decision: PolicyDecision,
 }
 
-/// Operator-tunable rule layered on top of the default policy. A deny always
-/// wins; an allow waives the approval gate for its capability; max-risk lowers
-/// the global ceiling for every run.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PolicyRule {
@@ -491,8 +475,6 @@ pub fn target_matches(target: &str, pattern: &str) -> bool {
     }
 }
 
-/// The set of operator rules. `version` bumps on every mutation so clients can
-/// detect policy drift and reconcile.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PolicySet {
     pub rules: Vec<PolicyRule>,
@@ -527,7 +509,6 @@ impl PolicySet {
         self.version += 1;
     }
 
-    /// Lowest wins when multiple `MaxRisk` rules are present.
     pub fn max_risk(&self, default: RiskLevel) -> RiskLevel {
         self.rules.iter().fold(default, |acc, r| match r {
             PolicyRule::MaxRisk(m) => acc.min(*m),
@@ -568,7 +549,6 @@ impl PolicySet {
     }
 }
 
-/// The default policy plus the operator's `PolicySet`.
 #[derive(Debug, Clone)]
 pub struct ConfigPolicy {
     pub max_risk: RiskLevel,
@@ -681,7 +661,6 @@ pub struct Evidence {
 
 impl Evidence {
     pub fn cvss(&self) -> Option<CvssScore> {
-        // Try the structured `normalized` field first, then raw content.
         if let Some(ref norm) = self.normalized {
             if let Ok(score) = serde_json::from_value::<CvssScore>(norm.clone()) {
                 if score.effective_score() > 0.0 {
@@ -709,8 +688,6 @@ impl Evidence {
     }
 }
 
-/// Pluggable evaluator that extracts CVSS data from evidence and returns
-/// a `CvssScore`. Custom implementations can query external APIs (NVD, OSV).
 pub trait RiskEvaluator {
     fn evaluate(&self, evidence: &[Evidence]) -> Option<CvssScore>;
     fn evaluate_raw(&self, contents: &[String], kind: &Option<String>) -> Option<CvssScore>;
@@ -893,7 +870,6 @@ pub struct MemoryEntry {
     pub text: String,
 }
 
-/// Cheap monotonic-ish timestamp without pulling in a time-formatting dependency.
 pub fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

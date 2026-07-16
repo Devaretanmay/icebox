@@ -1,12 +1,9 @@
-//! Continuous validation: governed campaign over targets, comparable report.
-
 use crate::core::framework::SharedFramework;
 use crate::core::safety::{now_secs, RiskLevel};
 
 use crate::ai::agent::Planner;
 use crate::ai::orchestrator::{CampaignReport, Orchestrator};
 
-/// Validation run snapshot with policy version and timestamp for diffing.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ValidationReport {
     pub ran_at: u64,
