@@ -524,7 +524,7 @@ impl Agent {
             match fw
                 .executor
                 .execute(
-                    &loaded,
+                    &mut loaded,
                     &self.target,
                     None,
                     self.approved,
@@ -636,7 +636,7 @@ impl Agent {
             match fw
                 .executor
                 .execute(
-                    &loaded_mut,
+                    &mut loaded_mut,
                     &self.target,
                     None,
                     self.approved,

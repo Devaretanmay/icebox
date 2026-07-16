@@ -15,9 +15,27 @@ interface AuditRecord {
   decision: string | object;
 }
 
+interface ModuleItem {
+  name: string;
+  kind: string;
+  description: string;
+}
+
+interface JobItem {
+  id: number;
+  module: string;
+  target: string;
+  status: string;
+  elapsed_secs: number;
+}
+
 function App() {
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([])
   const [audits, setAudits] = useState<AuditRecord[]>([])
+  const [modules, setModules] = useState<ModuleItem[]>([])
+  const [jobs, setJobs] = useState<JobItem[]>([])
+  const [mode, setMode] = useState<string>('freezer')
+  const [isChangingMode, setIsChangingMode] = useState(false)
   const API_BASE = 'http://127.0.0.1:8443/api/v1'
 
   const fetchData = async () => {
@@ -31,6 +49,21 @@ function App() {
       if (audRes.ok) {
         const audData = await audRes.json()
         setAudits(audData)
+      }
+      const modRes = await fetch(`${API_BASE}/modules`)
+      if (modRes.ok) {
+        setModules(await modRes.json())
+      }
+      const jobsRes = await fetch(`${API_BASE}/jobs`)
+      if (jobsRes.ok) {
+        setJobs(await jobsRes.json())
+      }
+      if (!isChangingMode) {
+        const modeRes = await fetch(`${API_BASE}/mode`)
+        if (modeRes.ok) {
+          const modeData = await modeRes.json()
+          setMode(modeData.mode)
+        }
       }
     } catch (e) {
       console.error('Failed to fetch ICEBOX data:', e)
@@ -70,6 +103,23 @@ function App() {
     return 'Unknown';
   }
 
+  const handleModeChange = async (newMode: string) => {
+    setIsChangingMode(true)
+    setMode(newMode)
+    try {
+      await fetch(`${API_BASE}/mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: newMode })
+      })
+      fetchData()
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setIsChangingMode(false)
+    }
+  }
+
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <header className="header flex justify-between items-center">
@@ -86,7 +136,36 @@ function App() {
           </svg>
           <h1 className="m-0">ICEBOX</h1>
         </div>
-        <div className="mono text-core-ice">Operator View</div>
+        
+        <div className="flex items-center gap-2">
+          <div className="mono text-slate-steel" style={{ fontSize: '0.875rem', marginRight: '1rem' }}>Restriction Mode:</div>
+          <div className="flex bg-seam-black" style={{ border: '1px solid var(--slate-steel)', borderRadius: '4px', overflow: 'hidden' }}>
+            <button 
+              className={`button m-0 ${mode === 'fridge' ? 'bg-signal-teal text-seam-black' : 'bg-seam-black text-slate-steel'}`}
+              style={{ border: 'none', borderRadius: 0 }}
+              onClick={() => handleModeChange('fridge')}
+              disabled={isChangingMode}
+            >
+              FRIDGE
+            </button>
+            <button 
+              className={`button m-0 ${mode === 'freezer' ? 'bg-signal-teal text-seam-black' : 'bg-seam-black text-slate-steel'}`}
+              style={{ border: 'none', borderLeft: '1px solid var(--slate-steel)', borderRadius: 0 }}
+              onClick={() => handleModeChange('freezer')}
+              disabled={isChangingMode}
+            >
+              FREEZER
+            </button>
+            <button 
+              className={`button m-0 ${mode === 'deep_freezer' ? 'bg-signal-teal text-seam-black' : 'bg-seam-black text-slate-steel'}`}
+              style={{ border: 'none', borderLeft: '1px solid var(--slate-steel)', borderRadius: 0 }}
+              onClick={() => handleModeChange('deep_freezer')}
+              disabled={isChangingMode}
+            >
+              DEEP FREEZER
+            </button>
+          </div>
+        </div>
       </header>
 
       <div className="flex gap-8 flex-col lg:flex-row">
@@ -119,6 +198,24 @@ function App() {
               </div>
             ))
           )}
+
+          <h2 className="text-core-ice mt-8" style={{ marginTop: '2rem' }}>Loaded Weapons</h2>
+          <div className="card">
+            {modules.length === 0 ? (
+              <div className="text-slate-steel text-center py-4">No modules loaded.</div>
+            ) : (
+              <div className="grid gap-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem' }}>
+                {modules.map(mod => (
+                  <div key={mod.name} className="p-2 flex flex-col gap-1" style={{ border: '1px solid var(--slate-steel)', borderRadius: '2px' }}>
+                    <div className="flex justify-between items-center">
+                      <span className="mono font-bold">{mod.name}</span>
+                    </div>
+                    <span className="badge" style={{ alignSelf: 'flex-start', backgroundColor: 'var(--slate-steel)', color: 'var(--frost-white)' }}>{mod.kind}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="w-full">
@@ -151,6 +248,28 @@ function App() {
             })}
             {audits.length === 0 && (
               <div className="text-slate-steel text-center py-4">No audit events yet.</div>
+            )}
+          </div>
+          
+          <h2 className="text-core-ice mt-8" style={{ marginTop: '2rem' }}>Active Tasks</h2>
+          <div className="card max-h-[300px] overflow-y-auto">
+            {jobs.length === 0 ? (
+              <div className="text-slate-steel text-center py-4">No active tasks running.</div>
+            ) : (
+              jobs.map(job => (
+                <div key={job.id} className="flex justify-between items-center" style={{ borderBottom: '1px solid var(--slate-steel)', padding: '0.75rem 0' }}>
+                  <div>
+                    <span className="mono text-slate-steel" style={{ marginRight: '1rem' }}>ID: {job.id}</span>
+                    <span className="mono font-bold text-signal-teal">{job.module}</span>
+                    <span className="text-slate-steel" style={{ margin: '0 0.5rem' }}>on</span>
+                    <span className="mono text-core-ice">{job.target}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="mono text-slate-steel">{job.elapsed_secs}s</span>
+                    <span className={`badge ${job.status === 'Running' ? 'allowed' : 'text-slate-steel'}`}>{job.status}</span>
+                  </div>
+                </div>
+              ))
             )}
           </div>
         </div>

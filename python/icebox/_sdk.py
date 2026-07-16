@@ -64,6 +64,7 @@ class IceboxClient:
         sandbox: bool = False,
         approved: bool = False,
         options: dict | None = None,
+        engine: str | None = None,
     ) -> dict:
         return self._post(
             f"/api/v1/modules/{name}/run",
@@ -72,6 +73,7 @@ class IceboxClient:
                 "sandbox": sandbox,
                 "approved": approved,
                 "options": options or {},
+                "engine": engine,
             },
         )
 
@@ -86,6 +88,69 @@ class IceboxClient:
 
     def audit(self, n: int = 20) -> list[dict]:
         return self._get("/api/v1/audit", {"n": n})
+
+    def bind_proxy(self, target: str, port: int, sandbox: bool = False) -> dict:
+        return self._post("/api/v1/proxy/bind", {
+            "target": target,
+            "port": port,
+            "sandbox": sandbox,
+        })
+
+    def get_openai_tools(self) -> list[dict]:
+        """Dynamically generates OpenAI-compatible JSON schemas for all ICEBOX modules."""
+        modules = self.list_modules()
+        tools = []
+        for mod in modules:
+            name = mod.get("name", "unknown")
+            desc = mod.get("description", "")
+            if mod.get("kind"):
+                desc = f"[{mod['kind']}] {desc}"
+            
+            # Build strictly typed JSON schema for parameters
+            properties = {}
+            required = []
+            
+            # The agent always needs to provide a target for ICEBOX to preflight
+            properties["target"] = {
+                "type": "string",
+                "description": "The target IP, hostname, or scope for this module execution."
+            }
+            required.append("target")
+            
+            # Parse module-specific options
+            opts = mod.get("options", {})
+            if opts:
+                options_props = {}
+                for opt_name, opt_val in opts.items():
+                    opt_type = "string"
+                    if isinstance(opt_val, bool):
+                        opt_type = "boolean"
+                    elif isinstance(opt_val, (int, float)):
+                        opt_type = "number"
+                    options_props[opt_name] = {
+                        "type": opt_type,
+                        "description": f"Option: {opt_name}"
+                    }
+                properties["options"] = {
+                    "type": "object",
+                    "properties": options_props,
+                    "description": "Additional module-specific options"
+                }
+            
+            tool = {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": desc,
+                    "parameters": {
+                        "type": "object",
+                        "properties": properties,
+                        "required": required
+                    }
+                }
+            }
+            tools.append(tool)
+        return tools
 
 
 class Governance:

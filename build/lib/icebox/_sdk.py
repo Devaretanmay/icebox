@@ -1,115 +1,136 @@
-"""ctypes wrapper around the ICEBOX ``libicebox`` C ABI."""
+"""HTTP-based Python SDK for the ICEBOX Governance Kernel.
 
-import ctypes
-import glob
+Talks directly to the ICEBOX REST API — no native build required.
+"""
+
 import json
-import os
-
-# Loads libicebox from a wheel build, a cargo target dir, or ICEBOX_CAPI.
-_PKG_DIR = os.path.dirname(os.path.abspath(__file__))
-_NATIVE = next(
-    iter(glob.glob(os.path.join(_PKG_DIR, "_native.*"))), None
-)
-_CANDIDATES = [
-    _NATIVE,
-    "target/debug/libicebox.dylib",
-    "target/debug/libicebox.so",
-    "target/release/libicebox.dylib",
-    "target/release/libicebox.so",
-    "libicebox.dylib",
-    "libicebox.so",
-    "icebox.dll",
-    os.environ.get("ICEBOX_CAPI", ""),
-]
+import urllib.error
+import urllib.request
+from typing import Any
 
 
-def _load_lib():
-    for path in _CANDIDATES:
-        if not path:
-            continue
+class IceboxError(Exception):
+    pass
+
+
+class IceboxClient:
+    """High-level client for the ICEBOX REST API."""
+
+    def __init__(self, url: str = "http://127.0.0.1:8443"):
+        self._base = url.rstrip("/")
+
+    def _get(self, path: str, params: dict | None = None) -> Any:
+        url = self._base + path
+        if params:
+            query = "&".join(f"{k}={v}" for k, v in params.items())
+            url = f"{url}?{query}"
+        with urllib.request.urlopen(url, timeout=10) as r:
+            return json.loads(r.read())
+
+    def _post(self, path: str, body: Any = None) -> Any:
+        data = json.dumps(body).encode() if body is not None else b""
+        req = urllib.request.Request(
+            self._base + path,
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         try:
-            return ctypes.CDLL(path)
-        except OSError:
-            continue
-    raise RuntimeError(
-        "libicebox not found. Build it with `cargo build` "
-        "or set ICEBOX_CAPI to the shared library path."
-    )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                raw = r.read()
+                return json.loads(raw) if raw else None
+        except urllib.error.HTTPError as e:
+            raise IceboxError(f"HTTP {e.code}: {e.read().decode()}") from e
 
+    def list_modules(self) -> list[dict]:
+        return self._get("/api/v1/modules")
 
-_lib = _load_lib()
+    def get_module(self, name: str) -> dict:
+        return self._get(f"/api/v1/modules/{name}")
 
-_lib.icebox_govern.restype = ctypes.c_void_p
-_lib.icebox_govern.argtypes = [ctypes.c_char_p]
+    def accept_charter(self, target: str) -> dict:
+        return self._post("/api/v1/charter", {"engagement": target})
 
-_lib.icebox_check.restype = ctypes.c_void_p
-_lib.icebox_check.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    def add_scope(self, target: str) -> dict:
+        return self._post("/api/v1/scope", {"target": target})
 
-_lib.icebox_check_auto.restype = ctypes.c_void_p
-_lib.icebox_check_auto.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    def set_mode(self, mode: str) -> str:
+        return self._post("/api/v1/mode", {"mode": mode})
 
-_lib.icebox_approve.restype = ctypes.c_bool
-_lib.icebox_approve.argtypes = [ctypes.c_void_p, ctypes.c_uint64]
+    def run_module(
+        self,
+        name: str,
+        target: str,
+        sandbox: bool = False,
+        approved: bool = False,
+        options: dict | None = None,
+    ) -> dict:
+        return self._post(
+            f"/api/v1/modules/{name}/run",
+            {
+                "target": target,
+                "sandbox": sandbox,
+                "approved": approved,
+                "options": options or {},
+            },
+        )
 
-_lib.icebox_deny.restype = ctypes.c_bool
-_lib.icebox_deny.argtypes = [ctypes.c_void_p, ctypes.c_uint64]
+    def pending_approvals(self) -> list[dict]:
+        return self._get("/api/v1/approvals")
 
-_lib.icebox_pending.restype = ctypes.c_void_p
-_lib.icebox_pending.argtypes = [ctypes.c_void_p]
+    def approve(self, approval_id: int) -> str:
+        return self._post(f"/api/v1/approvals/{approval_id}/approve")
 
-_lib.icebox_audit_json.restype = ctypes.c_void_p
-_lib.icebox_audit_json.argtypes = [ctypes.c_void_p]
+    def deny(self, approval_id: int) -> str:
+        return self._post(f"/api/v1/approvals/{approval_id}/deny")
 
-_lib.icebox_audit_csv.restype = ctypes.c_void_p
-_lib.icebox_audit_csv.argtypes = [ctypes.c_void_p]
-
-_lib.icebox_free_string.argtypes = [ctypes.c_void_p]
-
-_lib.icebox_free_handle.argtypes = [ctypes.c_void_p]
-
-
-def _read_string(ptr):
-    if not ptr:
-        return None
-    data = ctypes.c_char_p(ptr).value
-    _lib.icebox_free_string(ptr)
-    return data.decode() if data is not None else None
+    def audit(self, n: int = 20) -> list[dict]:
+        return self._get("/api/v1/audit", {"n": n})
 
 
 class Governance:
+    """Backward-compatible shim — now backed by HTTP instead of ctypes."""
+
     def __init__(self, config: dict):
-        cfg = json.dumps(config).encode()
-        self.handle = _lib.icebox_govern(cfg)
-        if not self.handle:
-            raise ValueError("icebox_govern failed: invalid config")
+        url = config.get("url", "http://127.0.0.1:8443")
+        self._client = IceboxClient(url)
 
     def check(self, task: dict) -> dict:
-        raw = _read_string(_lib.icebox_check(self.handle, json.dumps(task).encode()))
-        return json.loads(raw) if raw else {}
+        name = task.get("module", "")
+        target = task.get("target", "")
+        try:
+            return self._client.run_module(name, target)
+        except Exception as e:
+            return {"error": str(e)}
 
     def run(self, task: dict) -> dict:
-        raw = _read_string(_lib.icebox_check_auto(self.handle, json.dumps(task).encode()))
-        return json.loads(raw) if raw else {}
+        return self.check({**task, "approved": True})
 
     def approve(self, approval_id: int) -> bool:
-        return bool(_lib.icebox_approve(self.handle, approval_id))
+        try:
+            self._client.approve(approval_id)
+            return True
+        except IceboxError:
+            return False
 
     def deny(self, approval_id: int) -> bool:
-        return bool(_lib.icebox_deny(self.handle, approval_id))
+        try:
+            self._client.deny(approval_id)
+            return True
+        except IceboxError:
+            return False
 
     def pending(self) -> list:
-        raw = _read_string(_lib.icebox_pending(self.handle))
-        return json.loads(raw) if raw else []
+        return self._client.pending_approvals()
 
     def audit_json(self) -> list:
-        raw = _read_string(_lib.icebox_audit_json(self.handle))
-        return json.loads(raw) if raw else []
+        return self._client.audit()
 
     def audit_csv(self) -> str:
-        raw = _read_string(_lib.icebox_audit_csv(self.handle))
-        return raw or ""
-
-    def __del__(self):
-        if getattr(self, "handle", None):
-            _lib.icebox_free_handle(self.handle)
-            self.handle = None
+        try:
+            raw = urllib.request.urlopen(
+                self._client._base + "/api/v1/audit/export", timeout=10
+            ).read()
+            return raw.decode()
+        except Exception:
+            return ""

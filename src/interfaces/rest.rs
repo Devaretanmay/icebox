@@ -205,7 +205,8 @@ pub async fn serve(fw: SharedFramework, addr: SocketAddr) -> anyhow::Result<()> 
         .route("/api/v1/evidence", get(list_evidence))
         .route("/api/v1/traces", get(list_traces))
         .route("/api/v1/memory", get(list_memory))
-        .route("/api/v1/mode", post(set_mode))
+        .route("/api/v1/mode", get(get_mode).post(set_mode))
+        .route("/api/v1/proxy/bind", post(bind_proxy))
         .layer(CorsLayer::permissive())
         .with_state(fw);
 
@@ -289,30 +290,62 @@ async fn set_mode(
     if !role_allows(fw.operator_role, Role::Operator) {
         return Err(StatusCode::FORBIDDEN);
     }
-    
+
     fw.executor.policy_set.rules.clear();
 
     match payload.mode.to_lowercase().as_str() {
         "fridge" => {
-            fw.executor.policy_set.add_rule(PolicyRule::MaxRisk(RiskLevel::Low));
+            fw.executor
+                .policy_set
+                .add_rule(PolicyRule::MaxRisk(RiskLevel::Low));
             Ok(Json("mode set to fridge".into()))
         }
         "freezer" => {
-            fw.executor.policy_set.add_rule(PolicyRule::MaxRisk(RiskLevel::High));
-            fw.executor.policy_set.add_rule(PolicyRule::DenyIfCvssAbove(7.0));
+            fw.executor
+                .policy_set
+                .add_rule(PolicyRule::MaxRisk(RiskLevel::High));
+            fw.executor
+                .policy_set
+                .add_rule(PolicyRule::DenyIfCvssAbove(7.0));
             Ok(Json("mode set to freezer".into()))
         }
         "deep_freezer" | "deep freezer" | "deep-freezer" => {
-            fw.executor.policy_set.add_rule(PolicyRule::MaxRisk(RiskLevel::Critical));
-            fw.executor.policy_set.add_rule(PolicyRule::RequireApprovalIf {
-                cvss_above: Some(0.0),
-                epss_above: None,
-                kev: false,
-            });
+            fw.executor
+                .policy_set
+                .add_rule(PolicyRule::MaxRisk(RiskLevel::Critical));
+            fw.executor
+                .policy_set
+                .add_rule(PolicyRule::RequireApprovalIf {
+                    cvss_above: Some(0.0),
+                    epss_above: None,
+                    kev: false,
+                });
             Ok(Json("mode set to deep_freezer".into()))
         }
         _ => Err(StatusCode::BAD_REQUEST),
     }
+}
+
+async fn get_mode(State(fw): State<SharedFramework>) -> Json<serde_json::Value> {
+    let fw = fw.lock().await;
+
+    // Infer mode based on the current rules
+    let max_risk = fw.executor.policy_set.max_risk(RiskLevel::High);
+    let has_cvss = fw.executor.policy_set.has_cvss_rules();
+
+    let mode = if max_risk == RiskLevel::Critical {
+        "deep_freezer"
+    } else if max_risk == RiskLevel::High && has_cvss {
+        "freezer"
+    } else if max_risk == RiskLevel::Low {
+        "fridge"
+    } else {
+        "custom"
+    };
+
+    Json(serde_json::json!({
+        "mode": mode
+    }))
 }
 
 async fn run_module(
@@ -395,7 +428,7 @@ async fn run_module(
     let result = fw
         .executor
         .execute(
-            &loaded,
+            &mut loaded,
             &payload.target,
             None,
             payload.approved,
@@ -829,7 +862,7 @@ async fn approve_approval(
     match fw
         .executor
         .execute(
-            &loaded,
+            &mut loaded,
             &req.target,
             None,
             true,
@@ -892,4 +925,88 @@ async fn list_traces(State(fw): State<SharedFramework>) -> Json<Vec<ReasoningTra
 async fn list_memory(State(fw): State<SharedFramework>) -> Json<Vec<MemoryEntry>> {
     let fw = fw.lock().await;
     Json(fw.executor.recent_memories(50))
+}
+
+#[derive(Deserialize)]
+struct ProxyBindPayload {
+    target: String,
+    port: u16,
+    #[serde(default)]
+    sandbox: bool,
+}
+
+#[derive(Serialize)]
+struct ProxyBindResponse {
+    local_port: u16,
+    preflight: Option<PreflightReport>,
+    error: Option<String>,
+}
+
+async fn bind_proxy(
+    State(fw): State<SharedFramework>,
+    Json(payload): Json<ProxyBindPayload>,
+) -> Json<ProxyBindResponse> {
+    let fw = fw.lock().await;
+    if !role_allows(fw.operator_role, Role::Operator) {
+        return Json(ProxyBindResponse {
+            local_port: 0,
+            preflight: None,
+            error: Some("forbidden: operator role required".into()),
+        });
+    }
+
+    // Basic preflight - virtual module check
+    struct VirtualModule;
+    #[async_trait::async_trait]
+    impl crate::core::module::Module for VirtualModule {
+        async fn run(
+            &self,
+        ) -> Result<crate::core::module::ModuleResult, crate::core::module::ModuleError> {
+            Ok(crate::core::module::ModuleResult::default())
+        }
+    }
+
+    let proxy_module = crate::core::module::LoadedModule {
+        info: crate::core::module::ModuleInfo {
+            name: "agent_tunnel".into(),
+            description: "Agent Tunnel (Proxy)".into(),
+            kind: crate::core::module::ModuleKind::Auxiliary,
+            author: "System".into(),
+            capabilities: vec![crate::core::module::Capability::NetworkScan],
+            impact: None,
+            intent: None,
+            sandbox_image: None,
+        },
+        module: Box::new(VirtualModule),
+    };
+    let pf = fw.executor.preflight(
+        &proxy_module,
+        &payload.target,
+        None,
+        true,
+        PolicyContext::Rest,
+    );
+    let policy = fw.executor.policy(PolicyContext::Rest);
+    let report = to_preflight_report(&pf, &policy);
+
+    if let Err(e) = pf.check(&policy) {
+        return Json(ProxyBindResponse {
+            local_port: 0,
+            preflight: Some(report),
+            error: Some(e.to_string()),
+        });
+    }
+
+    match crate::core::proxy::ProxyListener::spawn(&payload.target, payload.port).await {
+        Ok(listener) => Json(ProxyBindResponse {
+            local_port: listener.local_addr.port(),
+            preflight: Some(report),
+            error: None,
+        }),
+        Err(e) => Json(ProxyBindResponse {
+            local_port: 0,
+            preflight: Some(report),
+            error: Some(format!("Failed to bind proxy: {e}")),
+        }),
+    }
 }

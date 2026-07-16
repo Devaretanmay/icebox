@@ -464,6 +464,7 @@ pub enum PolicyRule {
         epss_above: Option<f64>,
         kev: bool,
     },
+    DenyPayload(String),
 }
 
 pub fn target_matches(target: &str, pattern: &str) -> bool {

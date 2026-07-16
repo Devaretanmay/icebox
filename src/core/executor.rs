@@ -132,7 +132,7 @@ impl ModuleExecutor {
     #[allow(clippy::too_many_arguments)]
     pub async fn execute(
         &mut self,
-        loaded: &LoadedModule,
+        loaded: &mut LoadedModule,
         target: &str,
         destructive_override: Option<bool>,
         approved: bool,
@@ -225,12 +225,21 @@ impl ModuleExecutor {
         engine: crate::core::sandbox::SandboxEngineType,
     ) -> ModuleResult {
         use crate::core::sandbox::Sandbox;
-        let image = loaded
+        let mut image = loaded
             .info
             .sandbox_image
             .as_deref()
-            .unwrap_or("alpine:3.20");
-        match Sandbox::freeze(engine, target, image).await {
+            .unwrap_or("alpine:3.20")
+            .to_string();
+
+        if target.starts_with("target:") {
+            let parts: Vec<&str> = target.split(':').collect();
+            if parts.len() == 3 {
+                image = format!("{}:{}", parts[1], parts[2]);
+            }
+        }
+
+        match Sandbox::freeze(engine, target, &image).await {
             Ok(sandbox) => {
                 info!(
                     container = %sandbox.container_id(),
@@ -241,6 +250,7 @@ impl ModuleExecutor {
                     Ok(ip) => {
                         let mut new_mod =
                             crate::modules::load(&loaded.info.name).expect("module load failed");
+                        let mut target_port = 80;
                         if let Some(opts) = loaded.module.options_json().as_object() {
                             for (k, v) in opts {
                                 if let Some(s) = v.as_str() {
@@ -251,8 +261,23 @@ impl ModuleExecutor {
                                     new_mod.module.set_option(k, &b.to_string()).ok();
                                 }
                             }
+                            if let Some(p) = opts.get("port") {
+                                target_port = p.as_str().unwrap_or("80").parse().unwrap_or(80);
+                            }
                         }
-                        new_mod.module.set_option("host", &ip).ok();
+
+                        let proxy = crate::core::proxy::ProxyListener::spawn(&ip, target_port)
+                            .await
+                            .expect("failed to spawn proxy");
+
+                        new_mod
+                            .module
+                            .set_option("host", &proxy.local_addr.ip().to_string())
+                            .ok();
+                        new_mod
+                            .module
+                            .set_option("port", &proxy.local_addr.port().to_string())
+                            .ok();
                         new_mod.module.run().await.unwrap_or_else(|e| ModuleResult {
                             error: Some(e.to_string()),
                             ..Default::default()

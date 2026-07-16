@@ -112,10 +112,28 @@ impl DockerSandbox {
             Docker::connect_with_local_defaults().map_err(|_| SandboxError::Unavailable)?;
         docker.ping().await.map_err(|_| SandboxError::Unavailable)?;
 
+        use bollard::query_parameters::CreateImageOptions;
+        let mut stream = docker.create_image(
+            Some(CreateImageOptions {
+                from_image: Some(image.to_string()),
+                ..Default::default()
+            }),
+            None,
+            None,
+        );
+        while let Some(_) = stream.next().await {}
+
         let name = format!("icebox-sandbox-{}", std::process::id());
+
+        let cmd = if image.contains("alpine") {
+            Some(vec!["sleep".to_string(), "300".to_string()])
+        } else {
+            None
+        };
+
         let config = ContainerCreateBody {
             image: Some(image.to_string()),
-            cmd: Some(vec!["sleep".to_string(), "300".to_string()]),
+            cmd,
             hostname: Some("icebox-sandbox".to_string()),
             ..Default::default()
         };

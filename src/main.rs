@@ -521,7 +521,7 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
         println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
         return;
     }
-    let Some(ref l) = s.loaded else {
+    let Some(ref mut l) = s.loaded else {
         println!("no module");
         return;
     };
@@ -579,7 +579,9 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
         }
         println!("preflight passed");
     } else {
-        println!("{COLOR_TEAL}[SANDBOX] Preflight auto-allowed (simulation mode){COLOR_RESET}");
+        println!(
+            "{COLOR_TEAL}[SANDBOX] Preflight auto-allowed (isolated environment){COLOR_RESET}"
+        );
     }
 
     let job = Job::new(&l.info.name, &target);
@@ -843,6 +845,7 @@ fn policy_rule_str(r: &PolicyRule) -> String {
             }
             format!("require approval if [{}]", parts.join(", "))
         }
+        PolicyRule::DenyPayload(p) => format!("deny payload matching '{p}'"),
     }
 }
 
@@ -1103,7 +1106,7 @@ async fn cmd_approve(a: &[&str], fw: SharedFramework) {
             for (k, v) in &req.options {
                 let _ = loaded.module.set_option(k, v);
             }
-            match g.executor.execute(&loaded, &req.target, None, true, PolicyContext::Cli, None, false, None).await {
+            match g.executor.execute(&mut loaded, &req.target, None, true, PolicyContext::Cli, None, false, None).await {
                 Ok(_) => println!("approved + executed: #{id}"),
                 Err(e) => println!("approved but execute failed: {e}"),
             }

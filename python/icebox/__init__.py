@@ -6,6 +6,8 @@ orchestration, and :class:`IceboxClient` for talking to the REST API.
 
 from ._sdk import Governance, IceboxClient, IceboxError
 
+import contextlib
+
 class Workspace:
     """High-level abstraction for ICEBOX orchestration.
     
@@ -29,6 +31,25 @@ class Workspace:
     def audit(self, n: int = 20) -> list[dict]:
         """Retrieves the JSON audit trail for the workspace."""
         return self.client.audit(n)
+
+    @contextlib.contextmanager
+    def tunnel(self, port: int, sandbox: bool = False):
+        """Creates a governed tunnel to the target port.
+        
+        Yields a local port that the agent can connect to. ICEBOX will intercept,
+        govern, and forward the traffic to the real target.
+        """
+        res = self.client.bind_proxy(self.target, port, sandbox=sandbox)
+        if "error" in res and res["error"]:
+            raise IceboxError(f"Failed to bind proxy: {res['error']}")
+        local_port = res.get("local_port")
+        if not local_port:
+            raise IceboxError(f"No local port returned: {res}")
+        try:
+            yield local_port
+        finally:
+            # We would tear down the proxy here if the API supported it
+            pass
 
 __all__ = ["Governance", "IceboxClient", "IceboxError", "Workspace"]
 __version__ = "0.2.2"

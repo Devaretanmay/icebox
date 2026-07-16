@@ -1,36 +1,31 @@
 <div align="center">
   <img src="assets/icebox-logo-dark.svg" alt="ICEBOX Logo" width="450" />
 
-  **A seatbelt for robots that hack things.**
+  **ICEBOX: The runtime governance layer for autonomous security.**
+  
+  <br />
+
+  [![Build](https://img.shields.io/github/actions/workflow/status/Devaretanmay/icebox/ci.yml?branch=main&style=flat-square)](https://github.com/Devaretanmay/icebox/actions)
+  [![Rust](https://img.shields.io/badge/rust-stable-orange?style=flat-square)](https://www.rust-lang.org/)
+  [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+  [![Python SDK](https://img.shields.io/badge/python-sdk%20ready-yellow?style=flat-square)](python/icebox)
 </div>
 
-[![Build](https://img.shields.io/github/actions/workflow/status/Devaretanmay/icebox/ci.yml?branch=main&style=flat-square)](https://github.com/Devaretanmay/icebox/actions)
-[![Rust](https://img.shields.io/badge/rust-stable-orange?style=flat-square)](https://www.rust-lang.org/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Python SDK](https://img.shields.io/badge/python-sdk%20ready-yellow?style=flat-square)](python/icebox)
+Welcome, let's get your ICEBOX environment set up.
 
 ICEBOX is the runtime governance layer for autonomous security agents and offensive security tooling. It gives every human operator, REST client, and autonomous agent a single, auditable choke point — the **governance seam** — that must be passed before any action is taken against an authorized target.
 
-```text
-Human / CLI / REST Client / LLM Agent / Multi-Agent
-                 │
-      ┌──────────▼─────────┐
-      │   ModuleExecutor   │  ← the seam
-      │    ::execute()     │
-      └────────────────────┘
-                 │
-      ┌──────────▼─────────┐
-      │   Policy Engine    │  CVSS / EPSS / KEV aware
-      └────────────────────┘
-                 │
-      ┌──────────▼─────────┐
-      │   Approval Queue   │  charter · scope · risk · sign-off
-      └────────────────────┘
-                 │
-      ┌──────────▼─────────┐
-      │    Audit Engine    │  JSON + CSV
-      └────────────────────┘
-```
+### Operational Tiers
+
+ICEBOX supports three distinct governance tiers to match your operational risk profile:
+
+* **The Fridge** (Development): Basic guardrails and audit logging. Ideal for local testing and non-destructive agents.
+* **The Freezer** (Staging): Enforced CVSS limits and sandbox containment. Designed for safe, controlled execution.
+* **The Deep Freezer** (Production): Maximum security with strict explicit approvals, multi-factor sign-off, and absolute containment. Perfect for production environments.
+
+<div align="center">
+  <img src="assets/icebox-pipeline.png" alt="ICEBOX Governance Pipeline" width="800" />
+</div>
 
 By centralizing policy enforcement, approval workflow, and audit capture in
 one place, ICEBOX makes it possible to prove what an agent was permitted to

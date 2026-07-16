@@ -59,7 +59,6 @@ async fn test_sandbox_executor_integration() {
         assert!(res.error.unwrap().contains("Sandbox initialization failed"));
     } else {
         // If docker is actually available, we expect the scan to run natively.
-        // We do not assert exact mock output anymore.
         let has_sandbox_evidence = res.evidence.iter().any(|line| line.contains("[SANDBOX]"));
         assert!(has_sandbox_evidence || res.success || !res.success);
     }
