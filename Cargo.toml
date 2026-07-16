@@ -1,6 +1,6 @@
 [package]
 name = "icebox-gov"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 license = "MIT"
 description = "Runtime governance for autonomous offensive security — the single seam every human operator, REST client, and LLM agent must pass through before anything touches a target."
@@ -45,7 +45,7 @@ futures-util = "0.3"
 members = ["crates/icebox-macro"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/Devaretanmay/icebox"
