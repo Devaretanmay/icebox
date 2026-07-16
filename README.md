@@ -244,9 +244,8 @@ findings.
 
 ## Documentation
 
-Full docs — SDK references, deployment guidance, policy authoring — are
-published at
-[devaretanmay.github.io/icebox](https://devaretanmay.github.io/icebox/).
+Full docs — SDK references, deployment guidance, and policy authoring — are
+available locally in the [`docs/`](docs/) directory.
 
 ## Security
 
