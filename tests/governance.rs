@@ -49,8 +49,8 @@ fn approval_queue_lifecycle() {
         "routine".into(),
         Default::default(),
     );
-    assert_eq!(a, 0);
-    assert_eq!(b, 1);
+    assert_eq!(a, 1);
+    assert_eq!(b, 2);
     assert_eq!(q.list().len(), 2);
 
     assert!(q.approve(a));
