@@ -15,7 +15,7 @@ name = "icebox"
 crate-type = ["rlib", "cdylib"]
 
 [[bin]]
-name = "icebox"
+name = "icebox-daemon"
 path = "src/main.rs"
 
 [dependencies]

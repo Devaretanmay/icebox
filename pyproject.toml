@@ -21,6 +21,9 @@ dependencies = []
 [project.optional-dependencies]
 langchain = ["langchain>=0.1", "pydantic>=2"]
 
+[project.scripts]
+icebox = "icebox.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/Devaretanmay/icebox"
 Repository = "https://github.com/Devaretanmay/icebox"
