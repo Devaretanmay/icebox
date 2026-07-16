@@ -550,6 +550,7 @@ impl Agent {
                     self.approved,
                     PolicyContext::Autonomous,
                     Some(jid.as_u64()),
+                    false,
                 )
                 .await
             {
@@ -661,6 +662,7 @@ impl Agent {
                     self.approved,
                     PolicyContext::Autonomous,
                     Some(jid.as_u64()),
+                    false,
                 )
                 .await
             {

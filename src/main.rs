@@ -535,15 +535,20 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
         println!("no module");
         return;
     };
-    // `--approve` opts the operator into destructive / high-risk execution;
-    // without it, the executor refuses anything above the configured risk.
     let mut approved = false;
-    let tp = if a.first().copied() == Some("--approve") {
-        approved = true;
-        &a[1..]
-    } else {
-        a
-    };
+    let mut sandbox = false;
+    let mut tp = a;
+    while let Some(first) = tp.first().copied() {
+        if first == "--approve" {
+            approved = true;
+            tp = &tp[1..];
+        } else if first == "--sandbox" {
+            sandbox = true;
+            tp = &tp[1..];
+        } else {
+            break;
+        }
+    }
     let target = if !tp.is_empty() {
         Some(tp.join(" "))
     } else {
@@ -555,17 +560,21 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
     };
     s.target = Some(target.clone());
 
-    let pf = fw
-        .executor
-        .preflight(l, &target, None, approved, PolicyContext::Cli);
-    if let Err(e) = pf.check(&fw.executor.policy(PolicyContext::Cli)) {
-        println!("{COLOR_ORANGE}BLOCKED: {e}{COLOR_RESET}");
-        if pf.risk >= RiskLevel::High {
-            println!("try: run --approve {target}");
+    if !sandbox {
+        let pf = fw
+            .executor
+            .preflight(l, &target, None, approved, PolicyContext::Cli);
+        if let Err(e) = pf.check(&fw.executor.policy(PolicyContext::Cli)) {
+            println!("{COLOR_ORANGE}BLOCKED: {e}{COLOR_RESET}");
+            if pf.risk >= RiskLevel::High {
+                println!("try: run --approve {target}");
+            }
+            return;
         }
-        return;
+        println!("preflight passed");
+    } else {
+        println!("{COLOR_TEAL}[SANDBOX] Preflight auto-allowed (simulation mode){COLOR_RESET}");
     }
-    println!("preflight passed");
 
     let job = Job::new(&l.info.name, &target);
     let jid = job.id;
@@ -579,6 +588,7 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
             approved,
             PolicyContext::Cli,
             Some(jid.as_u64()),
+            sandbox,
         )
         .await
     {
@@ -1086,7 +1096,7 @@ async fn cmd_approve(a: &[&str], fw: SharedFramework) {
             for (k, v) in &req.options {
                 let _ = loaded.module.set_option(k, v);
             }
-            match g.executor.execute(&loaded, &req.target, None, true, PolicyContext::Cli, None).await {
+            match g.executor.execute(&loaded, &req.target, None, true, PolicyContext::Cli, None, false).await {
                 Ok(_) => println!("approved + executed: #{id}"),
                 Err(e) => println!("approved but execute failed: {e}"),
             }

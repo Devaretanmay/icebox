@@ -55,6 +55,8 @@ struct RunPayload {
     #[serde(default)]
     approved: bool,
     #[serde(default)]
+    sandbox: bool,
+    #[serde(default)]
     options: std::collections::HashMap<String, serde_json::Value>,
 }
 
@@ -342,6 +344,7 @@ async fn run_module(
             payload.approved,
             PolicyContext::Rest,
             Some(job_id.as_u64()),
+            payload.sandbox,
         )
         .await;
 
@@ -770,7 +773,15 @@ async fn approve_approval(
     }
     match fw
         .executor
-        .execute(&loaded, &req.target, None, true, PolicyContext::Rest, None)
+        .execute(
+            &loaded,
+            &req.target,
+            None,
+            true,
+            PolicyContext::Rest,
+            None,
+            false,
+        )
         .await
     {
         Ok(_) => Ok(Json(format!("request {id} approved and executed"))),

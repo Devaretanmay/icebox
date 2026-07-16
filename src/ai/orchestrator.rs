@@ -187,7 +187,15 @@ mod tests {
             .lock()
             .await
             .executor
-            .execute(&loaded, "127.0.0.1", None, true, PolicyContext::Cli, None)
+            .execute(
+                &loaded,
+                "127.0.0.1",
+                None,
+                true,
+                PolicyContext::Cli,
+                None,
+                false,
+            )
             .await;
         assert!(
             res.is_ok(),
@@ -211,7 +219,15 @@ mod tests {
             .lock()
             .await
             .executor
-            .execute(&loaded, "127.0.0.1", None, false, PolicyContext::Cli, None)
+            .execute(
+                &loaded,
+                "127.0.0.1",
+                None,
+                false,
+                PolicyContext::Cli,
+                None,
+                false,
+            )
             .await;
         assert!(
             res.is_err(),
