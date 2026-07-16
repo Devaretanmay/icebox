@@ -11,7 +11,8 @@ use crate::modules::hex_encode;
     name = "mysql_scanner",
     kind = "Scanner",
     description = "MySQL service scanner  -  version detection and default credential check",
-    author = "ICEBOX"
+    author = "ICEBOX",
+    sandbox_image = "mysql:5.7"
 )]
 pub struct MysqlScanner {
     #[option(required = true, help = "Target IP or hostname")]

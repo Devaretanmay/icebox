@@ -187,6 +187,11 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
+    let sandbox_image_expr = match map.get("sandbox_image") {
+        Some(s) => quote! { Some(#s.into()) },
+        None => quote! { None },
+    };
+
     let info_impl = quote! {
         impl #name {
             pub fn build_info() -> crate::core::ModuleInfo {
@@ -198,6 +203,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
                     capabilities: #caps_expr,
                     impact: #impact_expr,
                     intent: #intent_expr,
+                    sandbox_image: #sandbox_image_expr,
                 }
             }
         }

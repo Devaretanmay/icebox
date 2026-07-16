@@ -81,6 +81,25 @@ impl Sandbox {
         &self.target
     }
 
+    pub async fn ip_address(&self) -> Result<String, SandboxError> {
+        let inspect = self
+            .docker
+            .inspect_container(&self.container_id, None)
+            .await?;
+        if let Some(ns) = inspect.network_settings {
+            if let Some(networks) = ns.networks {
+                if let Some(bridge) = networks.get("bridge") {
+                    if let Some(ip) = bridge.ip_address.as_deref() {
+                        if !ip.is_empty() {
+                            return Ok(ip.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        Err(SandboxError::Unavailable)
+    }
+
     pub async fn capture_logs(&self) -> Vec<String> {
         let opts = LogsOptions {
             stdout: true,

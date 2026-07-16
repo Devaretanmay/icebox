@@ -164,7 +164,7 @@ impl ModuleExecutor {
             "executor: preflight passed"
         );
         let result = if sandbox {
-            self.run_sandboxed(&loaded.info, target).await
+            self.run_sandboxed(loaded, target).await
         } else {
             loaded.module.run().await?
         };
@@ -218,17 +218,49 @@ impl ModuleExecutor {
     }
     async fn run_sandboxed(
         &self,
-        info: &crate::core::module::ModuleInfo,
+        loaded: &crate::core::module::LoadedModule,
         target: &str,
     ) -> ModuleResult {
         use crate::core::sandbox::Sandbox;
-        match Sandbox::freeze(target, "alpine:3.20").await {
+        let image = loaded
+            .info
+            .sandbox_image
+            .as_deref()
+            .unwrap_or("alpine:3.20");
+        match Sandbox::freeze(target, image).await {
             Ok(sandbox) => {
                 info!(
                     container = %sandbox.container_id(),
                     "[SANDBOX] Docker container frozen"
                 );
-                let mut result = self.run_simulated(info, target);
+
+                let mut result = match sandbox.ip_address().await {
+                    Ok(ip) => {
+                        let mut new_mod =
+                            crate::modules::load(&loaded.info.name).expect("module load failed");
+                        if let Some(opts) = loaded.module.options_json().as_object() {
+                            for (k, v) in opts {
+                                if let Some(s) = v.as_str() {
+                                    new_mod.module.set_option(k, s).ok();
+                                } else if let Some(n) = v.as_u64() {
+                                    new_mod.module.set_option(k, &n.to_string()).ok();
+                                } else if let Some(b) = v.as_bool() {
+                                    new_mod.module.set_option(k, &b.to_string()).ok();
+                                }
+                            }
+                        }
+                        new_mod.module.set_option("host", &ip).ok();
+                        new_mod.module.run().await.unwrap_or_else(|e| ModuleResult {
+                            error: Some(e.to_string()),
+                            ..Default::default()
+                        })
+                    }
+                    Err(e) => ModuleResult {
+                        error: Some(format!("Failed to get sandbox IP: {e}")),
+                        ..Default::default()
+                    }
+                };
+
                 let logs = sandbox.capture_logs().await;
                 result.evidence.extend(logs);
                 result.evidence.push(format!(
@@ -244,7 +276,7 @@ impl ModuleExecutor {
             }
             Err(_) => {
                 info!("[SANDBOX] Docker unavailable, falling back to simulation");
-                self.run_simulated(info, target)
+                self.run_simulated(&loaded.info, target)
             }
         }
     }

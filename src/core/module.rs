@@ -175,6 +175,7 @@ pub struct ModuleInfo {
     pub capabilities: Vec<Capability>,
     pub impact: Option<RiskLevel>,
     pub intent: Option<Intent>,
+    pub sandbox_image: Option<String>,
 }
 
 impl ModuleInfo {
