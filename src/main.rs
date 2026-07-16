@@ -3,6 +3,12 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+const COLOR_ORANGE: &str = "\x1b[38;2;232;84;42m"; // #E8542A
+const COLOR_TEAL: &str = "\x1b[38;2;46;140;147m"; // #2E8C93
+const COLOR_ICE: &str = "\x1b[38;2;201;220;230m"; // #C9DCE6
+const COLOR_SLATE: &str = "\x1b[38;2;74;92;104m"; // #4A5C68
+const COLOR_RESET: &str = "\x1b[0m";
+
 use icebox::core::executor::ModuleExecutor;
 use icebox::core::framework::{new_shared_framework, Framework, SharedFramework};
 use icebox::core::governance::{audit_to_csv, role_allows, PolicyPack, Role};
@@ -72,7 +78,7 @@ async fn main() -> anyhow::Result<()> {
     let mut buf = String::new();
     loop {
         buf.clear();
-        eprint!("icebox> ");
+        eprint!("{COLOR_SLATE}icebox>{COLOR_RESET} ");
         if std::io::stdin().read_line(&mut buf)? == 0 {
             break;
         }
@@ -212,13 +218,13 @@ fn cmd_charter(a: &[&str], fw: &mut Framework) {
                 return;
             }
             if !role_allows(fw.operator_role, Role::Operator) {
-                println!("forbidden: operator role required");
+                println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
                 return;
             }
             fw.executor.charter = Charter::accept(a[1..].join(" "), vec!["authorized".into()]);
-            println!("accepted: {}", a[1..].join(" "));
+            println!("{COLOR_TEAL}accepted: {}{COLOR_RESET}", a[1..].join(" "));
         }
-        "status" => println!("accepted: {}", fw.executor.charter.accepted),
+        "status" => println!("{COLOR_TEAL}accepted: {}{COLOR_RESET}", fw.executor.charter.accepted),
         _ => println!("usage: charter accept|status"),
     }
 }
@@ -232,7 +238,7 @@ fn cmd_scope(a: &[&str], fw: &mut Framework) {
                 return;
             }
             if !role_allows(fw.operator_role, Role::Operator) {
-                println!("forbidden: operator role required");
+                println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
                 return;
             }
             fw.executor.scope.allow.push(t.clone());
@@ -250,7 +256,7 @@ fn cmd_scope(a: &[&str], fw: &mut Framework) {
 fn cmd_sessions(a: &[&str], fw: &mut Framework) {
     if a.first().copied() == Some("close") {
         if !role_allows(fw.operator_role, Role::Operator) {
-            println!("forbidden: operator role required");
+            println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
             return;
         }
         let id = a.get(1).and_then(|x| x.parse::<u64>().ok()).map(SessionId);
@@ -290,7 +296,7 @@ fn cmd_jobs(a: &[&str], fw: &Framework) {
 
 async fn cmd_save(a: &[&str], fw: SharedFramework) {
     if !role_allows(fw.lock().await.operator_role, Role::Operator) {
-        println!("forbidden: operator role required");
+        println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
         return;
     }
     let path = if a.is_empty() {
@@ -310,7 +316,7 @@ async fn cmd_save(a: &[&str], fw: SharedFramework) {
 
 async fn cmd_load(a: &[&str], fw: SharedFramework) {
     if !role_allows(fw.lock().await.operator_role, Role::Operator) {
-        println!("forbidden: operator role required");
+        println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
         return;
     }
     let path = if a.is_empty() {
@@ -520,7 +526,7 @@ fn load_report(path: &str) -> Option<icebox::ai::ValidationReport> {
 
 async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
     if !role_allows(fw.operator_role, Role::Operator) {
-        println!("forbidden: operator role required");
+        println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
         return;
     }
     let Some(ref l) = s.loaded else {
@@ -551,7 +557,7 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
         .executor
         .preflight(l, &target, None, approved, PolicyContext::Cli);
     if let Err(e) = pf.check(&fw.executor.policy(PolicyContext::Cli)) {
-        println!("BLOCKED: {e}");
+        println!("{COLOR_ORANGE}BLOCKED: {e}{COLOR_RESET}");
         if pf.risk >= RiskLevel::High {
             println!("try: run --approve {target}");
         }
@@ -675,7 +681,7 @@ fn cmd_policy(a: &[&str], s: &CliState, fw: &mut Framework) {
 
 fn cmd_policy_add(rest: &[&str], fw: &mut Framework) {
     if !role_allows(fw.operator_role, Role::Operator) {
-        println!("forbidden: operator role required");
+        println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
         return;
     }
     let Some(kind) = rest.first().copied() else {
@@ -767,7 +773,7 @@ fn cmd_policy_add(rest: &[&str], fw: &mut Framework) {
 
 fn cmd_policy_remove(rest: &[&str], fw: &mut Framework) {
     if !role_allows(fw.operator_role, Role::Operator) {
-        println!("forbidden: operator role required");
+        println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
         return;
     }
     let Some(idx) = rest.first().and_then(|s| s.parse::<usize>().ok()) else {
@@ -926,7 +932,7 @@ async fn cmd_role(a: &[&str], fw: SharedFramework) {
         };
         let mut g = fw.lock().await;
         if !role_allows(g.operator_role, Role::Admin) {
-            println!("forbidden: admin role required to change role");
+            println!("{COLOR_ORANGE}forbidden: admin role required to change role{COLOR_RESET}");
             return;
         }
         g.operator_role = r;
@@ -968,7 +974,7 @@ async fn cmd_pack(a: &[&str], fw: SharedFramework) {
             let pack = PolicyPack::new(name.clone(), rules.clone());
             let mut g = fw.lock().await;
             if !role_allows(g.operator_role, Role::Admin) {
-                println!("forbidden: admin role required to add packs");
+                println!("{COLOR_ORANGE}forbidden: admin role required to add packs{COLOR_RESET}");
                 return;
             }
             g.policy_packs.insert(name.clone(), pack);
@@ -981,7 +987,7 @@ async fn cmd_pack(a: &[&str], fw: SharedFramework) {
             };
             let mut g = fw.lock().await;
             if !role_allows(g.operator_role, Role::Admin) {
-                println!("forbidden: admin role required to apply packs");
+                println!("{COLOR_ORANGE}forbidden: admin role required to apply packs{COLOR_RESET}");
                 return;
             }
             let pack = match g.policy_packs.get(&name) {
@@ -1055,7 +1061,7 @@ async fn cmd_approve(a: &[&str], fw: SharedFramework) {
             };
             let mut g = fw.lock().await;
             if !role_allows(g.operator_role, Role::Operator) {
-                println!("forbidden: operator role required");
+                println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
                 return;
             }
             let req = match g.approval_queue.get(id) {
@@ -1088,7 +1094,7 @@ async fn cmd_approve(a: &[&str], fw: SharedFramework) {
             };
             let mut g = fw.lock().await;
             if !role_allows(g.operator_role, Role::Operator) {
-                println!("forbidden: operator role required");
+                println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
                 return;
             }
             if g.approval_queue.deny(id) {

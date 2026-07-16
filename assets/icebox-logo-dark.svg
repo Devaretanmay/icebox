@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 350 100" fill="none">
+  <!-- Seam Black Background -->
+  <rect width="350" height="100" fill="#0E1620" />
+  
+  <g transform="translate(0, 0)">
+    <!-- Gap Background Disc (Seam Black) -->
+    <circle cx="50" cy="54" r="40" fill="#0E1620" />
+    
+    <!-- Core Ice Rings -->
+    <circle cx="50" cy="54" r="40" stroke="#C9DCE6" stroke-width="6" />
+    <circle cx="50" cy="54" r="28" stroke="#C9DCE6" stroke-width="6" />
+    <circle cx="50" cy="54" r="16" stroke="#C9DCE6" stroke-width="6" />
+    
+    <!-- Center Core (Signal Teal) -->
+    <circle cx="50" cy="54" r="13" fill="#2E8C93" />
+    
+    <!-- Cutout to make the orange wedge stand out against dark background -->
+    <path d="M50 54 L38 0 L62 0 Z" fill="#0E1620" />
+    
+    <!-- The Governance Seam (Hazard Orange Wedge) -->
+    <path d="M50 54 L44 14 L56 14 Z" fill="#E8542A" />
+    
+    <!-- Top Indicator Notch (Hazard Orange) -->
+    <rect x="47" y="4" width="6" height="8" fill="#E8542A" />
+  </g>
+
+  <!-- ICEBOX Wordmark -->
+  <text x="110" y="72" font-family="'IBM Plex Mono', monospace" font-weight="bold" font-size="52" fill="#F1F5F7">ICEBOX</text>
+</svg>
