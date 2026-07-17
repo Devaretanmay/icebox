@@ -58,7 +58,7 @@ ICEBOX enforces governance at exactly one point: `ModuleExecutor::execute()`. Ev
 
 ### 2. Mandatory Sandboxing
 
-Any action executed by an agent can be safely contained inside an ephemeral Docker sandbox (Firecracker is not supported for module execution). This prevents security modules from modifying your host system or accessing sensitive local credentials. A module cannot break out of its container unless explicitly permitted by your configuration. When an operator binds a proxy for a target, real payloads (e.g. port scans, SQL injections) are routed through that disposable proxy target rather than the agent's host.
+Any action executed by an agent is contained inside an ephemeral Docker sandbox (Firecracker is not supported for module execution). This prevents security modules from modifying your host system or accessing sensitive local credentials. A module cannot break out of its container unless explicitly permitted by your configuration. When an operator explicitly binds an egress proxy, payloads (port scans, reverse shells, brute-force attempts) are routed through that disposable target rather than the agent's host.
 
 ### 3. Scope and Risk Management
 
@@ -118,6 +118,7 @@ docker run --rm -p 8443:8443 ghcr.io/devaretanmay/icebox
 git clone https://github.com/Devaretanmay/icebox.git
 cd icebox
 cargo build --release
+cargo xtask build-sandbox-worker # Required for mandatory sandboxing (requires Docker)
 ```
 
 ### 2. Run the CLI and REST API
@@ -195,7 +196,7 @@ icebox> policy rule add require-approval-if --cvss 5.0 --epss 0.1 --kev
 | SDK | Status | Usage |
 | --- | --- | --- |
 | Rust (native) | Available | `icebox-gov` crate |
-| Python | Available | `icebox.Workspace` via REST API |
+| Python | Available | In-process PyO3 governance (`Governance`) with REST fallback (`IceboxClient`/`Workspace`) |
 | TypeScript / Java / Go | Planned | Community contributions welcome |
 
 ## Architecture
@@ -257,9 +258,9 @@ icebox/
 
 ICEBOX governs itself. The `governed_vuln_scan_blocks_high_cvss_exploit` test
 runs the `vuln_scanner` module against ICEBOX's own source tree through the
-governance seam, resolves real CVSS scores from OSV.dev, and verifies that
+governance seam, resolves real CVSS scores from OSV.dev (skipping gracefully if offline), and verifies that
 `DenyIfCvssAbove(7.0)` blocks hypothetical exploitation of high-CVSS
-findings.
+findings. Payload denial (`DenyPayload`) is also enforced proactively via a `dry_run` preview for supported generator modules.
 
 ## Documentation
 
@@ -275,6 +276,17 @@ See [SECURITY.md](SECURITY.md) for the disclosure process.
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for
 guidelines.
+
+## Platform Notes
+
+- **Egress isolation**: Rigorous network isolation (`LinuxNetnsIsolator`) requires
+  Linux network namespaces and is non-functional on macOS/Windows. The default
+  `TcpProxyIsolator` provides opt-in TCP forwarding on all platforms.
+- **Mandatory sandboxing**: Requires Docker and the `icebox-worker` binary
+  (built via `cargo xtask build-sandbox-worker` or `make build-sandbox-worker`).
+- **DenyPayload enforcement**: Proactive (pre-execution) for modules that
+  implement `dry_run` (currently: `reverse_shell_generator`). Post-execution
+  content matching for all other modules.
 
 ## License
 

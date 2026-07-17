@@ -142,34 +142,30 @@ impl VulnerabilityFinding {
     }
 }
 
-const KEV_CVES: &[&str] = &[
-    "CVE-2021-44228",
-    "CVE-2021-45046",
-    "CVE-2021-45105",
-    "CVE-2022-22965",
-    "CVE-2022-22963",
-    "CVE-2021-41773",
-    "CVE-2021-42013",
-    "CVE-2022-0847",
-    "CVE-2022-30190",
-    "CVE-2023-34362",
-    "CVE-2023-2868",
-    "CVE-2023-35078",
-    "CVE-2023-3519",
-    "CVE-2023-4966",
-    "CVE-2023-46604",
-    "CVE-2023-6345",
-    "CVE-2023-7024",
-    "CVE-2024-3094",
-    "CVE-2024-1709",
-    "CVE-2024-23897",
-];
+use tokio::sync::OnceCell;
 
-fn is_kev(cve_id: &str) -> bool {
+static KEV_CACHE: OnceCell<HashSet<String>> = OnceCell::const_new();
+
+async fn fetch_kev_list() -> HashSet<String> {
+    let mut set = HashSet::new();
+    if let Ok(resp) = reqwest::get("https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json").await {
+        if let Ok(json) = resp.json::<serde_json::Value>().await {
+            if let Some(vulns) = json.get("vulnerabilities").and_then(|v| v.as_array()) {
+                for vuln in vulns {
+                    if let Some(cve) = vuln.get("cveID").and_then(|c| c.as_str()) {
+                        set.insert(cve.to_uppercase());
+                    }
+                }
+            }
+        }
+    }
+    set
+}
+
+async fn is_kev(cve_id: &str) -> bool {
     let upper = cve_id.to_uppercase();
-    KEV_CVES
-        .iter()
-        .any(|k| upper == *k || upper.contains(k.trim_start_matches("CVE-")))
+    let cache = KEV_CACHE.get_or_init(fetch_kev_list).await;
+    cache.contains(&upper)
 }
 
 struct ScanCycleResult {
@@ -374,7 +370,7 @@ impl Module for VulnScanner {
             }
 
             for finding in &mut cycle_findings {
-                if is_kev(&finding.cve) {
+                if is_kev(&finding.cve).await {
                     finding.kev = true;
                 }
             }
@@ -720,12 +716,12 @@ async fn query_epss(
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_kev_detection() {
-        assert!(is_kev("CVE-2021-44228"));
-        assert!(is_kev("cve-2021-44228"));
-        assert!(is_kev("CVE-2022-22965"));
-        assert!(!is_kev("CVE-2024-99999"));
+    #[tokio::test]
+    async fn test_kev_detection() {
+        assert!(is_kev("CVE-2021-44228").await);
+        assert!(is_kev("cve-2021-44228").await);
+        assert!(is_kev("CVE-2022-22965").await);
+        assert!(!is_kev("CVE-2024-99999").await);
     }
 
     #[test]

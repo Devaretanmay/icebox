@@ -16,14 +16,22 @@ struct NativeIcebox {
 #[pymethods]
 impl NativeIcebox {
     #[new]
-    fn new() -> PyResult<Self> {
+    #[pyo3(signature = (scopes=None, max_risk=None))]
+    fn new(scopes: Option<Vec<String>>, max_risk: Option<String>) -> PyResult<Self> {
         let rt = Runtime::new().map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
         let mut charter = Charter::default();
         charter.accepted = true;
+        let risk = match max_risk.as_deref() {
+            Some("none") => RiskLevel::None,
+            Some("low") => RiskLevel::Low,
+            Some("medium") => RiskLevel::Medium,
+            Some("high") => RiskLevel::High,
+            _ => RiskLevel::Critical,
+        };
         let executor = ModuleExecutor::new(
             charter,
-            ScopeManager::default(),
-            RiskLevel::Critical,
+            ScopeManager::new(scopes.unwrap_or_default()),
+            risk,
         );
         let fw = new_shared_framework(executor);
         Ok(NativeIcebox { rt, fw })

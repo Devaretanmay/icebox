@@ -170,6 +170,7 @@ pub struct ModuleInfo {
     pub impact: Option<RiskLevel>,
     pub intent: Option<Intent>,
     pub sandbox_image: Option<String>,
+    pub cve: Option<String>,
 }
 
 impl ModuleInfo {
@@ -221,6 +222,12 @@ pub trait Module: Send + Sync {
     }
 
     async fn run(&self) -> Result<ModuleResult, ModuleError>;
+
+    /// Preview the module's output without side effects (no network I/O).
+    /// Used by the executor to enforce DenyPayload rules pre-execution.
+    async fn dry_run(&self) -> Result<ModuleResult, ModuleError> {
+        Err(ModuleError::Other("dry_run not supported".into()))
+    }
 
     fn set_option(&mut self, _name: &str, _value: &str) -> Result<(), ModuleError> {
         Err(ModuleError::Other("module does not accept options".into()))

@@ -7,7 +7,7 @@ use tokio::sync::Semaphore;
 use crate::modules::hex_encode;
 
 #[module(
-    name = "arp_scanner",
+    name = "ping_sweep",
     kind = "Scanner",
     description = "Discover live hosts on the local network via ICMP ping sweep",
     author = "ICEBOX"
@@ -1037,7 +1037,7 @@ impl Module for FtpBruteforce {
             pass: &str,
             timeout: std::time::Duration,
         ) -> Option<(String, String)> {
-            let addr = crate::core::proxy::resolve_dial(&host, port);
+            let addr = crate::core::proxy::resolve_dial(host, port);
             let stream = tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr))
                 .await
                 .ok()?

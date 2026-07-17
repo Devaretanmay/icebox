@@ -14,13 +14,13 @@ fn executor(max_risk: RiskLevel, scope: &[&str]) -> ModuleExecutor {
     )
 }
 
-fn decide(
+async fn decide(
     exec: &ModuleExecutor,
     loaded: &LoadedModule,
     target: &str,
     approved: bool,
 ) -> PolicyDecision {
-    let pf = exec.preflight(loaded, target, None, approved, PolicyContext::Cli);
+    let pf = exec.preflight(loaded, target, None, approved, PolicyContext::Cli).await;
     exec.policy(PolicyContext::Cli).evaluate(&pf.to_request())
 }
 
@@ -41,26 +41,26 @@ fn capability_and_intent_model() {
 
 #[tokio::test]
 async fn safety_gates_block_before_run() {
-    let loaded = icebox::modules::load("reverse_shell_payload").expect("module present");
+    let loaded = icebox::modules::load("reverse_shell_generator").expect("module present");
     let exec = executor(RiskLevel::Critical, &["10.0.0.5"]);
 
     assert!(
         matches!(
-            decide(&exec, &loaded, "8.8.8.8", true),
+            decide(&exec, &loaded, "8.8.8.8", true).await,
             PolicyDecision::Deny(_)
         ),
         "out-of-scope target must be denied"
     );
     assert!(
         matches!(
-            decide(&exec, &loaded, "10.0.0.5", false),
+            decide(&exec, &loaded, "10.0.0.5", false).await,
             PolicyDecision::RequireApproval(_)
         ),
         "high-risk payload needs approval"
     );
     assert!(
         matches!(
-            decide(&exec, &loaded, "10.0.0.5", true),
+            decide(&exec, &loaded, "10.0.0.5", true).await,
             PolicyDecision::Allow
         ),
         "approved high-risk payload runs"
@@ -76,7 +76,7 @@ async fn operator_rules_override() {
         .add_rule(PolicyRule::DenyCapability(Capability::CredentialAccess));
     assert!(
         matches!(
-            decide(&exec, &loaded, "10.0.0.5", true),
+            decide(&exec, &loaded, "10.0.0.5", true).await,
             PolicyDecision::Deny(_)
         ),
         "deny rule wins over approval"
@@ -88,7 +88,7 @@ async fn operator_rules_override() {
         .add_rule(PolicyRule::MaxRisk(RiskLevel::Low));
     assert!(
         matches!(
-            decide(&exec2, &loaded, "10.0.0.5", true),
+            decide(&exec2, &loaded, "10.0.0.5", true).await,
             PolicyDecision::Deny(_)
         ),
         "max-risk cap below module impact denies"
@@ -100,7 +100,7 @@ async fn operator_rules_override() {
         .add_rule(PolicyRule::AllowCapability(Capability::CredentialAccess));
     assert!(
         matches!(
-            decide(&exec3, &loaded, "10.0.0.5", false),
+            decide(&exec3, &loaded, "10.0.0.5", false).await,
             PolicyDecision::Allow
         ),
         "allow rule waives the approval gate"

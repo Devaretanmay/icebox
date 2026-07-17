@@ -1,4 +1,5 @@
 use linkme::distributed_slice;
+extern crate self as icebox;
 
 #[distributed_slice]
 pub static MODULE_REGISTRY: [crate::core::module::ModuleEntry];

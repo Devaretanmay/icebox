@@ -8,7 +8,6 @@ use crate::core::safety::{
 };
 use crate::core::session::{Session, SessionId, SessionKind};
 
-use crate::ai::ollama::OllamaClient;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
@@ -170,17 +169,39 @@ pub fn build_module_catalog() -> String {
     lines.join("\n")
 }
 
+pub enum AiClient {
+    Ollama(crate::ai::ollama::OllamaClient),
+    OpenAi(crate::ai::openai::OpenAiClient),
+}
+
+impl AiClient {
+    pub async fn prompt(
+        &self,
+        system: &str,
+        user: &str,
+        format: Option<serde_json::Value>,
+    ) -> anyhow::Result<String> {
+        match self {
+            Self::Ollama(c) => c.prompt(system, user, format).await,
+            Self::OpenAi(c) => c.prompt(system, user, format).await,
+        }
+    }
+}
+
 pub struct LlmPlanner {
-    llm: OllamaClient,
+    llm: AiClient,
     catalog: String,
 }
 
 impl LlmPlanner {
     pub fn new_with_catalog(model: impl Into<String>, catalog: String) -> Self {
-        LlmPlanner {
-            llm: OllamaClient::new(model.into()),
-            catalog,
-        }
+        let model = model.into();
+        let llm = if let Ok(key) = std::env::var("OPENAI_API_KEY") {
+            AiClient::OpenAi(crate::ai::openai::OpenAiClient::new(model, key))
+        } else {
+            AiClient::Ollama(crate::ai::ollama::OllamaClient::new(model))
+        };
+        LlmPlanner { llm, catalog }
     }
 
     pub fn new(model: impl Into<String>) -> Self {
@@ -506,7 +527,7 @@ impl Agent {
                 None,
                 self.approved,
                 PolicyContext::Autonomous,
-            );
+            ).await;
             let policy = make_config_policy(
                 self.max_risk,
                 PolicyContext::Autonomous,
@@ -617,7 +638,7 @@ impl Agent {
                 None,
                 self.approved,
                 PolicyContext::Autonomous,
-            );
+            ).await;
             let policy = make_config_policy(
                 self.max_risk,
                 PolicyContext::Autonomous,

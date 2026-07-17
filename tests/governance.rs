@@ -284,3 +284,91 @@ fn audit_csv_has_header_and_escapes_commas() {
     assert!(lines[1].starts_with("123,\"host,a\""), "got: {}", lines[1]);
     assert_eq!(lines.len(), 2);
 }
+
+#[tokio::test]
+async fn governance_cvss_gate_blocks_constructed_high_cvss() {
+    use icebox::core::{Charter, GovernanceRuntime, GovernedOutcome, TaskSpec};
+    use serde_json::json;
+
+    let rt = GovernanceRuntime::builder()
+        .charter(Charter::accept("cvss-test", vec![]))
+        .scope(vec!["0.0.0.0/0".into()])
+        .max_risk(RiskLevel::Critical)
+        .deny_if_cvss_above(7.0)
+        .build();
+
+    let task = TaskSpec {
+        name: "exploit".into(),
+        target: "10.0.0.5".into(),
+        capabilities: vec![Capability::PrivilegeEscalation],
+        impact: RiskLevel::High,
+        destructive: false,
+        approved: true,
+        // We supply the CVSS on the request to simulate what the planner would do
+        cvss: Some(CvssScore::from_score(9.5)),
+        ..Default::default()
+    };
+
+    let outcome = rt
+        .execute(task, || async {
+            // Simulated payload from module with 9.5 CVSS score
+            Ok(json!({
+                "findings": [{"cve": "CVE-EXAMPLE", "cvss_v31": 9.5}]
+            }))
+        })
+        .await;
+
+    assert!(
+        matches!(outcome, GovernedOutcome::Blocked { .. }),
+        "CVSS 9.5 must be blocked by DenyIfCvssAbove(7.0): got {:?}",
+        outcome
+    );
+}
+
+#[tokio::test]
+async fn deny_payload_blocks_generator_pre_execution() {
+    use icebox::core::executor::ModuleExecutor;
+    use icebox::core::{Charter, ScopeManager};
+
+    let mut loaded = icebox::modules::load("reverse_shell_generator").expect("module available");
+    loaded
+        .module
+        .set_option("lhost", "127.0.0.1")
+        .expect("must set option");
+    loaded
+        .module
+        .set_option("lport", "4444")
+        .expect("must set option");
+
+    let mut exec = ModuleExecutor::new(
+        Charter::accept("test", vec!["authorized".into()]),
+        ScopeManager::new(vec!["0.0.0.0/0".into()]),
+        RiskLevel::Critical,
+    );
+    exec.policy_set.add_rule(PolicyRule::DenyPayload("payload/bash".into()));
+
+    let res = exec
+        .execute(
+            &mut loaded,
+            "127.0.0.1",
+            None,
+            true,
+            PolicyContext::Autonomous,
+            None,
+            false,
+            None,
+        )
+        .await
+        .expect("executor runs");
+
+    assert!(
+        !res.success,
+        "DenyPayload must block execution and return success=false"
+    );
+    let evidence = res.evidence.join("\n");
+    assert!(
+        evidence.contains("[BLOCKED:payload]"),
+        "evidence must contain BLOCKED marker: {}",
+        evidence
+    );
+}

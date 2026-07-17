@@ -5,7 +5,7 @@ use crate::core::framework::SharedFramework;
 use crate::core::safety::RiskLevel;
 
 use crate::ai::agent::{
-    Action, Agent, AlwaysApprove, AnalysisOutput, CampaignResult, DenyPlan, Planner, ReportOutput,
+    Agent, AlwaysApprove, CampaignResult, DenyPlan, Planner,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,62 +91,57 @@ impl Orchestrator {
     }
 }
 
-pub struct StaticPlanner {
-    pub actions: Vec<Action>,
-}
-
-impl StaticPlanner {
-    pub fn new() -> Self {
-        let mut options = std::collections::HashMap::new();
-        options.insert("host".to_string(), String::new());
-        options.insert("ports".to_string(), "1-1024".to_string());
-        StaticPlanner {
-            actions: vec![Action {
-                module: "tcp_port_scanner".to_string(),
-                options,
-                target: String::new(),
-                priority: 50,
-                reason: "scripted recon".to_string(),
-            }],
-        }
-    }
-}
-
-impl Default for StaticPlanner {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[async_trait::async_trait]
-impl Planner for StaticPlanner {
-    async fn analyze(&self, _ctx: &str) -> anyhow::Result<AnalysisOutput> {
-        Ok(AnalysisOutput {
-            summary: "scripted analysis".to_string(),
-            vulnerabilities: vec![],
-            recommended_modules: vec!["tcp_port_scanner".to_string()],
-        })
-    }
-    async fn plan(&self, _ctx: &str) -> anyhow::Result<Vec<Action>> {
-        Ok(self.actions.clone())
-    }
-    async fn summarize(&self, _ctx: &str) -> anyhow::Result<ReportOutput> {
-        Ok(ReportOutput {
-            title: "scripted".to_string(),
-            summary: "scripted campaign".to_string(),
-            findings: vec![],
-            actions_taken: vec![],
-            recommendations: vec![],
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ai::agent::{Action, AnalysisOutput, ReportOutput};
     use crate::core::executor::ModuleExecutor;
     use crate::core::framework::new_shared_framework;
     use crate::core::safety::{Charter, PolicyContext, PolicyDecision, ScopeManager};
+
+    pub struct MockPlanner {
+        pub actions: Vec<Action>,
+    }
+
+    impl MockPlanner {
+        pub fn new() -> Self {
+            let mut options = std::collections::HashMap::new();
+            options.insert("host".to_string(), String::new());
+            options.insert("ports".to_string(), "1-1024".to_string());
+            MockPlanner {
+                actions: vec![Action {
+                    module: "tcp_port_scanner".to_string(),
+                    options,
+                    target: String::new(),
+                    priority: 50,
+                    reason: "scripted recon".to_string(),
+                }],
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl Planner for MockPlanner {
+        async fn analyze(&self, _ctx: &str) -> anyhow::Result<AnalysisOutput> {
+            Ok(AnalysisOutput {
+                summary: "scripted analysis".to_string(),
+                vulnerabilities: vec![],
+                recommended_modules: vec!["tcp_port_scanner".to_string()],
+            })
+        }
+        async fn plan(&self, _ctx: &str) -> anyhow::Result<Vec<Action>> {
+            Ok(self.actions.clone())
+        }
+        async fn summarize(&self, _ctx: &str) -> anyhow::Result<ReportOutput> {
+            Ok(ReportOutput {
+                title: "scripted".to_string(),
+                summary: "scripted campaign".to_string(),
+                findings: vec![],
+                actions_taken: vec![],
+                recommendations: vec![],
+            })
+        }
+    }
 
     #[tokio::test]
     async fn fans_out_and_aggregates() {
@@ -160,7 +155,7 @@ mod tests {
         orch.set_approved(true);
 
         let targets = vec!["127.0.0.1".to_string(), "127.0.0.1".to_string()];
-        let report = orch.run(&targets, || Box::new(StaticPlanner::new())).await;
+        let report = orch.run(&targets, || Box::new(MockPlanner::new())).await;
 
         assert_eq!(report.targets.len(), 2);
         assert_eq!(report.ok, 2);
@@ -211,7 +206,7 @@ mod tests {
             RiskLevel::Critical,
         );
         let fw = new_shared_framework(exec);
-        let mut loaded = crate::modules::load("reverse_shell_payload").expect("module");
+        let mut loaded = crate::modules::load("reverse_shell_generator").expect("module");
         let res = fw
             .lock()
             .await
@@ -252,7 +247,7 @@ mod tests {
         let _ = orch
             .run(
                 &["127.0.0.1".to_string()],
-                || Box::new(StaticPlanner::new()),
+                || Box::new(MockPlanner::new()),
             )
             .await;
         let decs = fw.lock().await.executor.recent_decisions(50);

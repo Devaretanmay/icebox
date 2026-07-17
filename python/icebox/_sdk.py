@@ -177,16 +177,20 @@ class Governance:
     """Natively backed by PyO3 Rust extension."""
 
     def __init__(self, config: dict):
+        url = config.get("url", "http://127.0.0.1:8443")
+        self._client = IceboxClient(url)
         try:
-            import _icebox
-            self._native = _icebox.NativeIcebox()
+            from . import _icebox
+            scopes = config.get("scope", {}).get("allow", [])
+            if not isinstance(scopes, list):
+                scopes = [scopes]
+            max_risk = config.get("max_risk", "critical")
+            self._native = _icebox.NativeIcebox(scopes, max_risk)
         except ImportError:
             self._native = None
-            url = config.get("url", "http://127.0.0.1:8443")
-            self._client = IceboxClient(url)
 
     def check(self, task: dict) -> dict:
-        name = task.get("module", "")
+        name = task.get("module", task.get("name", ""))
         target = task.get("target", "")
         sandbox = task.get("sandbox", False)
         

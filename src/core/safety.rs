@@ -686,7 +686,7 @@ impl PolicyEngine for ConfigPolicy {
 impl ConfigPolicy {
     /// Returns the first denied payload pattern found in a module's emitted
     /// evidence or structured data, or an empty string when none match.
-    /// Used to enforce the (otherwise inert) `DenyPayload` rule post-execution.
+    /// Enforced proactively via dry_run when supported; post-execution fallback otherwise.
     pub fn denied_payload(&self, result: &ModuleResult) -> String {
         let mut haystack = String::new();
         for e in &result.evidence {
@@ -702,6 +702,10 @@ impl ConfigPolicy {
             }
         }
         String::new()
+    }
+
+    pub fn has_deny_payload(&self) -> bool {
+        self.rules.rules.iter().any(|r| matches!(r, PolicyRule::DenyPayload(_)))
     }
 }
 

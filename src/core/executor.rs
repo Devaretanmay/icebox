@@ -2,7 +2,7 @@ use tracing::info;
 
 use crate::core::module::{LoadedModule, ModuleError, ModuleResult};
 use crate::core::safety::{
-    is_destructive, make_config_policy, now_secs, Charter, ConfigPolicy, DecisionRecord, Evidence,
+    make_config_policy, now_secs, Charter, ConfigPolicy, DecisionRecord, Evidence,
     MemoryEntry, MemoryKind, PolicyContext, PolicyDecision, PolicyEngine, PolicySet, Preflight,
     PreflightError, ReasoningTrace, RiskLevel, ScopeManager,
 };
@@ -18,6 +18,8 @@ pub enum ExecutorError {
     Preflight(#[from] PreflightError),
     #[error(transparent)]
     Module(#[from] ModuleError),
+    #[error("sandbox error: {0}")]
+    Sandbox(String),
 }
 
 #[derive(Debug)]
@@ -102,7 +104,7 @@ impl ModuleExecutor {
         self.evidence[start..].to_vec()
     }
 
-    pub fn preflight(
+    pub async fn preflight(
         &self,
         loaded: &LoadedModule,
         target: &str,
@@ -110,25 +112,18 @@ impl ModuleExecutor {
         approved: bool,
         context: PolicyContext,
     ) -> Preflight {
-        let base = RiskLevel::from_kind(loaded.info.kind);
-        let cap_impact = loaded
-            .info
-            .capabilities
-            .iter()
-            .map(|c| c.impact())
-            .max()
-            .unwrap_or(base);
-        let risk = loaded.info.impact.unwrap_or_else(|| base.max(cap_impact));
+        use crate::core::module::Intent;
         let destructive = destructive_override.unwrap_or_else(|| {
-            is_destructive(&loaded.info.name)
-                || is_destructive(&loaded.info.description)
-                || is_destructive(loaded.info.kind.as_str())
+            loaded.info.effective_intents().contains(&Intent::Modify)
         });
+        
+
+
         Preflight {
             target: target.to_string(),
             charter_accepted: self.charter.accepted,
             in_scope: self.scope.is_in_scope(target),
-            risk,
+            risk: loaded.info.effective_impact(),
             destructive,
             approved,
             capabilities: loaded.info.capabilities.clone(),
@@ -150,7 +145,7 @@ impl ModuleExecutor {
         sandbox: bool,
         engine: Option<crate::core::sandbox::SandboxEngineType>,
     ) -> Result<ModuleResult, ExecutorError> {
-        let pf = self.preflight(loaded, target, destructive_override, approved, context);
+        let pf = self.preflight(loaded, target, destructive_override, approved, context).await;
         let policy = self.policy(context);
         let decision = policy.evaluate(&pf.to_request());
         self.record_decision(&loaded.info.name, &pf, &decision);
@@ -180,6 +175,23 @@ impl ModuleExecutor {
             sandbox = sandbox,
             "executor: preflight passed"
         );
+
+        if policy.has_deny_payload() {
+            if let Ok(preview) = loaded.module.dry_run().await {
+                let denied = policy.denied_payload(&preview);
+                if !denied.is_empty() {
+                    let reason = format!("payload matched denied pattern (pre-execution): {denied}");
+                    self.record_decision(&loaded.info.name, &pf, &PolicyDecision::Deny(reason.clone()));
+                    return Ok(ModuleResult {
+                        success: false,
+                        evidence: vec![format!("[BLOCKED:payload] {denied}")],
+                        data: serde_json::Value::Null,
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
         let result = if sandbox {
             self.run_sandboxed(
                 loaded,
@@ -187,7 +199,7 @@ impl ModuleExecutor {
                 engine.unwrap_or(crate::core::sandbox::SandboxEngineType::Docker),
                 context,
             )
-            .await
+            .await?
         } else {
             match loaded.module.run().await {
                 Ok(r) => r,
@@ -269,7 +281,7 @@ impl ModuleExecutor {
         target: &str,
         engine: crate::core::sandbox::SandboxEngineType,
         context: PolicyContext,
-    ) -> ModuleResult {
+    ) -> Result<ModuleResult, ExecutorError> {
         use crate::core::sandbox::Sandbox;
         let image = "icebox-sandbox:latest".to_string();
         let module_name = loaded.info.name.clone();
@@ -309,17 +321,14 @@ impl ModuleExecutor {
                         context,
                     );
                 }
-                result
+                Ok(result)
             }
             Err(e) => {
                 let reason = format!(
                     "Sandbox initialization failed: {e}. Isolation is mandatory."
                 );
                 self.record_failure(&module_name, target, &reason, context);
-                ModuleResult {
-                    error: Some(reason),
-                    ..Default::default()
-                }
+                Err(ExecutorError::Sandbox(reason))
             }
         }
     }

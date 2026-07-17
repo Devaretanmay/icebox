@@ -1,8 +1,7 @@
 use icebox_macro::module;
 use icebox::core::module::{Module, ModuleResult, ModuleError};
-use icebox::core::Capability;
 
-#[module(name = "my_scanner", capabilities = [Capability::NetworkScan], impact = "low")]
+#[module(name = "my_scanner", kind = "Scanner", capabilities = [Capability::NetworkScan], impact = "Low")]
 pub struct MyScanner;
 
 #[async_trait::async_trait]

@@ -335,7 +335,7 @@ async fn get_module(
     };
     let pf = fw
         .executor
-        .preflight(&loaded, "", None, false, PolicyContext::Rest);
+        .preflight(&loaded, "", None, false, PolicyContext::Rest).await;
     Json(Some(ModuleDetail {
         name: loaded.info.name.clone(),
         kind: loaded.info.kind.as_str().into(),
@@ -474,7 +474,7 @@ async fn run_module(
         None,
         payload.approved,
         PolicyContext::Rest,
-    );
+    ).await;
     let policy = fw.executor.policy(PolicyContext::Rest);
     let report = to_preflight_report(&pf, &policy);
     if let Err(ref e) = pf.check(&policy) {
@@ -742,7 +742,8 @@ async fn evaluate_policy(
     let target = params.target.unwrap_or_default();
     let pf = fw
         .executor
-        .preflight(&loaded, &target, None, false, PolicyContext::Rest);
+        .preflight(&loaded, &target, None, false, PolicyContext::Rest)
+        .await;
     let policy = fw.executor.policy(PolicyContext::Rest);
     let decision = policy.evaluate(&pf.to_request());
     Json(serde_json::json!({
@@ -933,7 +934,7 @@ async fn request_approval(
     let id = fw
         .approval_queue
         .request(input.module, input.target, input.reason, input.options);
-    Json(fw.approval_queue.get(id).cloned().unwrap())
+    Json(fw.approval_queue.get(id).cloned().expect("Approval queue missing requested id"))
 }
 
 async fn approve_approval(
@@ -1063,14 +1064,15 @@ async fn bind_proxy(
 
     let proxy_module = crate::core::module::LoadedModule {
         info: crate::core::module::ModuleInfo {
-            name: "agent_tunnel".into(),
-            description: "Agent Tunnel (Proxy)".into(),
-            kind: crate::core::module::ModuleKind::Auxiliary,
+            name: "proxy".into(),
+            description: "Internal REST Proxy".into(),
             author: "System".into(),
-            capabilities: vec![crate::core::module::Capability::NetworkScan],
-            impact: None,
-            intent: None,
+            kind: crate::core::module::ModuleKind::Auxiliary,
+            capabilities: vec![],
+            impact: Some(crate::core::safety::RiskLevel::Low),
+            intent: Some(crate::core::module::Intent::Read),
             sandbox_image: None,
+            cve: None,
         },
         module: Box::new(VirtualModule),
     };
@@ -1080,7 +1082,7 @@ async fn bind_proxy(
         None,
         false,
         PolicyContext::Rest,
-    );
+    ).await;
     let policy = fw.executor.policy(PolicyContext::Rest);
     let report = to_preflight_report(&pf, &policy);
 
@@ -1092,14 +1094,24 @@ async fn bind_proxy(
         });
     }
 
-    use crate::core::proxy::{NetworkIsolator, tcp::TcpProxyIsolator};
-    let isolator = TcpProxyIsolator;
+    use crate::core::proxy::NetworkIsolator;
+    
+    #[cfg(target_os = "linux")]
+    let isolator: Box<dyn NetworkIsolator> = Box::new(crate::core::proxy::netns::LinuxNetnsIsolator {
+        namespace_name: format!("icebox-netns-{}", std::process::id()),
+    });
+
+    #[cfg(not(target_os = "linux"))]
+    let isolator: Box<dyn NetworkIsolator> = Box::new(crate::core::proxy::tcp::TcpProxyIsolator);
+
+    let _ = isolator.setup().await; // Ignore errors, it logs internally
+
     let proxy = isolator.spawn_proxy(&payload.target, payload.port).await;
     match proxy {
         Ok((listener, handle)) => {
             let port = listener.local_addr.port();
             crate::core::proxy::bind_proxy(&payload.target, listener.local_addr);
-            fw.proxies.insert(port, (payload.target.clone(), handle));
+            fw.proxies.insert(port, (payload.target.clone(), isolator, handle));
             Json(ProxyBindResponse {
                 local_port: port,
                 preflight: Some(report),
@@ -1136,8 +1148,9 @@ async fn unbind_proxy(
             error: Some("forbidden: operator role required".into()),
         });
     }
-    if let Some((target, handle)) = fw.proxies.remove(&payload.local_port) {
+    if let Some((target, isolator, handle)) = fw.proxies.remove(&payload.local_port) {
         crate::core::proxy::unbind_proxy(&target);
+        let _ = isolator.teardown().await;
         handle.abort();
     }
     Json(ProxyUnbindResponse { ok: true, error: None })

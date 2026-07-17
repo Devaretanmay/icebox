@@ -2315,7 +2315,7 @@ async fn es_http_request(
     path: &str,
     timeout: std::time::Duration,
 ) -> Result<Vec<u8>, ModuleError> {
-    let addr = crate::core::proxy::resolve_dial(&host, port);
+    let addr = crate::core::proxy::resolve_dial(host, port);
     let stream = match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await {
         Ok(Ok(s)) => s,
         Ok(Err(e)) => return Err(ModuleError::Other(format!("connect: {e}"))),

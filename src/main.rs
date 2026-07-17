@@ -24,6 +24,10 @@ struct CliState {
 }
 
 async fn run_worker(args: &[String]) -> anyhow::Result<()> {
+    if !std::path::Path::new("/.dockerenv").exists() {
+        eprintln!("fatal: worker must be run inside the ICEBOX sandbox");
+        std::process::exit(1);
+    }
     let mut name = None;
     let mut target = String::new();
     let mut options = serde_json::Value::Null;
@@ -173,7 +177,7 @@ async fn main() -> anyhow::Result<()> {
                 "help" | "?" => println!("Commands: help list use info set show charter scope run sessions jobs agent campaign validate save load policy audit evidence traces memory role pack approve proxy tier\nREST API on http://127.0.0.1:8443/api/v1"),
                 "exit" | "quit" => std::process::exit(0),
                 "list" => cmd_list().await,
-                "use" => cmd_use(a, &mut s, fw),
+                "use" => cmd_use(a, &mut s, fw).await,
                 "info" => cmd_info(&s),
                 "set" => cmd_set(a, &mut s),
                 "show" => cmd_show(a, &s),
@@ -182,7 +186,7 @@ async fn main() -> anyhow::Result<()> {
                 "sessions" => cmd_sessions(a, fw),
                 "jobs" => cmd_jobs(a, fw),
                 "run" => cmd_run(a, &mut s, fw).await,
-                "policy" => cmd_policy(a, &s, fw),
+                "policy" => cmd_policy(a, &s, fw).await,
                 "audit" => cmd_audit(a, fw),
                 "evidence" => cmd_evidence(a, fw),
                 "traces" => cmd_traces(a, fw),
@@ -201,7 +205,7 @@ async fn cmd_list() {
     }
 }
 
-fn cmd_use(a: &[&str], s: &mut CliState, fw: &Framework) {
+async fn cmd_use(a: &[&str], s: &mut CliState, fw: &Framework) {
     let n = a.join(" ");
     if n.is_empty() {
         println!("usage: use <name>");
@@ -215,7 +219,7 @@ fn cmd_use(a: &[&str], s: &mut CliState, fw: &Framework) {
                 None,
                 false,
                 PolicyContext::Cli,
-            );
+            ).await;
             let scope_note = match &s.target {
                 Some(_) => format!("in-scope: {}", pf.in_scope),
                 None => "in-scope: n/a (set a target with `run <target>`)".to_string(),
@@ -653,7 +657,7 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
 
     let pf = fw
         .executor
-        .preflight(l, &target, None, approved, PolicyContext::Cli);
+        .preflight(l, &target, None, approved, PolicyContext::Cli).await;
     if let Err(e) = pf.check(&fw.executor.policy(PolicyContext::Cli)) {
         println!("{COLOR_ORANGE}BLOCKED: {e}{COLOR_RESET}");
         if pf.risk >= RiskLevel::High {
@@ -709,7 +713,7 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
     }
 }
 
-fn cmd_policy(a: &[&str], s: &CliState, fw: &mut Framework) {
+async fn cmd_policy(a: &[&str], s: &CliState, fw: &mut Framework) {
     match a.first().copied() {
         Some("rules") => {
             println!("policy version: {}", fw.executor.policy_set.version);
@@ -749,7 +753,7 @@ fn cmd_policy(a: &[&str], s: &CliState, fw: &mut Framework) {
     };
     let pf = fw
         .executor
-        .preflight(&loaded, &target, None, false, PolicyContext::Cli);
+        .preflight(&loaded, &target, None, false, PolicyContext::Cli).await;
     let policy = fw.executor.policy(PolicyContext::Cli);
     let decision = policy.evaluate(&pf.to_request());
     println!("module: {}", loaded.info.name);
@@ -1232,9 +1236,19 @@ async fn cmd_proxy(a: &[&str], fw: SharedFramework) {
                 println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
                 return;
             }
-            use icebox::core::proxy::{bind_proxy as reg_bind, NetworkIsolator, tcp::TcpProxyIsolator};
+            use icebox::core::proxy::{bind_proxy as reg_bind, NetworkIsolator};
+            #[cfg(target_os = "linux")]
+            let isolator: Box<dyn NetworkIsolator> = Box::new(icebox::core::proxy::netns::LinuxNetnsIsolator {
+                namespace_name: format!("icebox-netns-{}", std::process::id()),
+            });
+
+            #[cfg(not(target_os = "linux"))]
+            let isolator: Box<dyn NetworkIsolator> = Box::new(icebox::core::proxy::tcp::TcpProxyIsolator);
+
+            let _ = isolator.setup().await;
+            
             let Ok((listener, handle)) =
-                TcpProxyIsolator.spawn_proxy(&target, port).await
+                isolator.spawn_proxy(&target, port).await
             else {
                 println!("{COLOR_ORANGE}failed to bind proxy for {target}{COLOR_RESET}");
                 return;
@@ -1242,7 +1256,7 @@ async fn cmd_proxy(a: &[&str], fw: SharedFramework) {
             let local = listener.local_addr;
             reg_bind(&target, local);
             let lp = local.port();
-            g.proxies.insert(lp, (target.clone(), handle));
+            g.proxies.insert(lp, (target.clone(), isolator, handle));
             println!("proxy bound: {target}:{port} -> 127.0.0.1:{lp}");
         }
         Some("unbind") => {
@@ -1255,8 +1269,9 @@ async fn cmd_proxy(a: &[&str], fw: SharedFramework) {
                 println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
                 return;
             }
-            if let Some((target, handle)) = g.proxies.remove(&port) {
+            if let Some((target, isolator, handle)) = g.proxies.remove(&port) {
                 icebox::core::proxy::unbind_proxy(&target);
+                let _ = isolator.teardown().await;
                 handle.abort();
                 println!("proxy unbound: 127.0.0.1:{port}");
             } else {
@@ -1269,7 +1284,7 @@ async fn cmd_proxy(a: &[&str], fw: SharedFramework) {
                 println!("no proxies bound");
                 return;
             }
-            for (port, (target, _)) in &g.proxies {
+            for (port, (target, _, _)) in &g.proxies {
                 println!("  127.0.0.1:{port} -> {target}");
             }
         }

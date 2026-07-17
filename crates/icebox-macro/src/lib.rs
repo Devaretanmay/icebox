@@ -53,12 +53,12 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
             .filter(|t| !t.is_empty())
             .map(|t| {
                 let id = format_ident!("{}", t);
-                quote! { crate::core::module::Capability::#id }
+                quote! { ::icebox::core::module::Capability::#id }
             })
             .collect();
         quote! { vec![ #(#idents),* ] }
     } else {
-        quote! { crate::core::module::Capability::from_kind(crate::core::module::ModuleKind::#kind_ident) }
+        quote! { ::icebox::core::module::Capability::from_kind(::icebox::core::module::ModuleKind::#kind_ident) }
     };
 
     // `impact` / `intent` are optional authoritive overrides; the literal must
@@ -66,14 +66,14 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
     let impact_expr = match map.get("impact") {
         Some(s) => {
             let id = format_ident!("{}", s);
-            quote! { Some(crate::core::safety::RiskLevel::#id) }
+            quote! { Some(::icebox::core::safety::RiskLevel::#id) }
         }
         None => quote! { None },
     };
     let intent_expr = match map.get("intent") {
         Some(s) => {
             let id = format_ident!("{}", s);
-            quote! { Some(crate::core::module::Intent::#id) }
+            quote! { Some(::icebox::core::module::Intent::#id) }
         }
         None => quote! { None },
     };
@@ -138,10 +138,10 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
             "string" => quote! { self.#fident = value.to_string(); },
             "bool" => quote! { self.#fident = matches!(value, "true" | "1"); },
             "ip" => {
-                quote! { self.#fident = value.parse().map_err(|_| crate::core::ModuleError::Parse(#fstr_lit.into()))?; }
+                quote! { self.#fident = value.parse().map_err(|_| ::icebox::core::ModuleError::Parse(#fstr_lit.into()))?; }
             }
             _ => {
-                quote! { self.#fident = value.parse().map_err(|_| crate::core::ModuleError::Parse(#fstr_lit.into()))?; }
+                quote! { self.#fident = value.parse().map_err(|_| ::icebox::core::ModuleError::Parse(#fstr_lit.into()))?; }
             }
         };
         set_arms.push(quote! { #fstr_lit => { #parse_expr } });
@@ -149,7 +149,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
             if ty_to_kind(fty) == "string" {
                 validate_arms.push(quote! {
                     if self.#fident.is_empty() {
-                        return Err(crate::core::ModuleError::MissingOption(#fstr_lit.into()));
+                        return Err(::icebox::core::ModuleError::MissingOption(#fstr_lit.into()));
                     }
                 });
             } else {
@@ -157,7 +157,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
                     {
                         let __dflt: #fty = ::core::default::Default::default();
                         if self.#fident == __dflt {
-                            return Err(crate::core::ModuleError::MissingOption(#fstr_lit.into()));
+                            return Err(::icebox::core::ModuleError::MissingOption(#fstr_lit.into()));
                         }
                     }
                 });
@@ -173,14 +173,14 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
     let opts_impl = quote! {
         impl #opts_name {
-            pub fn validate(&self) -> Result<(), crate::core::ModuleError> {
+            pub fn validate(&self) -> Result<(), ::icebox::core::ModuleError> {
                 #(#validate_arms)*
                 Ok(())
             }
-            pub fn set(&mut self, name: &str, value: &str) -> Result<(), crate::core::ModuleError> {
+            pub fn set(&mut self, name: &str, value: &str) -> Result<(), ::icebox::core::ModuleError> {
                 match name {
                     #(#set_arms,)*
-                    _ => return Err(crate::core::ModuleError::Other(format!("unknown option: {}", name))),
+                    _ => return Err(::icebox::core::ModuleError::Other(format!("unknown option: {}", name))),
                 }
                 Ok(())
             }
@@ -192,18 +192,24 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         None => quote! { None },
     };
 
+    let cve_expr = match map.get("cve") {
+        Some(s) => quote! { Some(#s.into()) },
+        None => quote! { None },
+    };
+
     let info_impl = quote! {
         impl #name {
-            pub fn build_info() -> crate::core::ModuleInfo {
-                crate::core::ModuleInfo {
+            pub fn build_info() -> ::icebox::core::ModuleInfo {
+                ::icebox::core::ModuleInfo {
                     name: #m_name.into(),
                     description: #m_desc.into(),
                     author: #m_author.into(),
-                    kind: crate::core::ModuleKind::#kind_ident,
+                    kind: ::icebox::core::ModuleKind::#kind_ident,
                     capabilities: #caps_expr,
                     impact: #impact_expr,
                     intent: #intent_expr,
                     sandbox_image: #sandbox_image_expr,
+                    cve: #cve_expr,
                 }
             }
         }
@@ -215,12 +221,12 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
     let entry = format_ident!("__ICEBOX_ENTRY_{}", base);
 
     let make_fn_def =
-        quote! { fn #make_fn() -> Box<dyn crate::core::Module> { Box::new(#name::default()) } };
-    let info_fn_def = quote! { fn #info_fn() -> crate::core::ModuleInfo { #name::build_info() } };
+        quote! { fn #make_fn() -> Box<dyn ::icebox::core::Module> { Box::new(#name::default()) } };
+    let info_fn_def = quote! { fn #info_fn() -> ::icebox::core::ModuleInfo { #name::build_info() } };
     let linkme_static = quote! {
-        #[::linkme::distributed_slice(crate::MODULE_REGISTRY)]
-        #[linkme(crate = linkme)]
-        static #entry: crate::core::ModuleEntry = crate::core::ModuleEntry {
+        #[::linkme::distributed_slice(::icebox::MODULE_REGISTRY)]
+        #[linkme(crate = ::linkme)]
+        static #entry: ::icebox::core::ModuleEntry = ::icebox::core::ModuleEntry {
             info: #info_fn,
             make: #make_fn,
         };

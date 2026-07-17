@@ -75,43 +75,15 @@ impl NetworkIsolator for LinuxNetnsIsolator {
                 while let Ok((size, peer)) = socket.recv_from(&mut buf).await {
                     tracing::info!("Intercepted DNS query from {} size {}", peer, size);
                     if size >= 12 {
-                        let mut response = Vec::with_capacity(size + 16);
-
-                        // Transaction ID
-                        response.push(buf[0]);
-                        response.push(buf[1]);
-
-                        // Flags: Standard query response, No error
-                        response.push(0x81);
-                        response.push(0x80);
-
-                        // QDCOUNT (copy from request)
-                        response.push(buf[4]);
-                        response.push(buf[5]);
-
-                        // ANCOUNT: 1
-                        response.push(0x00);
-                        response.push(0x01);
-
-                        // NSCOUNT: 0, ARCOUNT: 0
-                        response.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]);
-
-                        // Copy the Question Section
-                        response.extend_from_slice(&buf[12..size]);
-
-                        // Append the Answer (A record pointing to 10.0.0.1)
-                        // Name pointer to byte 12 (0xC00C)
-                        response.extend_from_slice(&[0xC0, 0x0C]);
-                        // Type A (1), Class IN (1)
-                        response.extend_from_slice(&[0x00, 0x01, 0x00, 0x01]);
-                        // TTL 60
-                        response.extend_from_slice(&[0x00, 0x00, 0x00, 0x3C]);
-                        // RDLENGTH 4
-                        response.extend_from_slice(&[0x00, 0x04]);
-                        // RDATA 10.0.0.1
-                        response.extend_from_slice(&[10, 0, 0, 1]);
-
-                        let _ = socket.send_to(&response, peer).await;
+                        if let Ok(upstream) = tokio::net::UdpSocket::bind("0.0.0.0:0").await {
+                            let _ = upstream.send_to(&buf[..size], "8.8.8.8:53").await;
+                            let mut resp_buf = [0u8; 512];
+                            if let Ok((resp_size, _)) =
+                                tokio::time::timeout(std::time::Duration::from_secs(2), upstream.recv_from(&mut resp_buf)).await.unwrap_or(Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout")))
+                            {
+                                let _ = socket.send_to(&resp_buf[..resp_size], peer).await;
+                            }
+                        }
                     }
                 }
             }
