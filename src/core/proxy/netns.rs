@@ -17,30 +17,23 @@ impl NetworkIsolator for LinuxNetnsIsolator {
 
         info!("Setting up network namespace: {}", self.namespace_name);
 
-        // 1. Create the network namespace
         run_cmd("ip", &["netns", "add", &self.namespace_name])?;
 
-        // 2. Create the veth pair
         let veth_host = format!("veth-{}-h", &self.namespace_name[..std::cmp::min(self.namespace_name.len(), 4)]);
         let veth_guest = format!("veth-{}-g", &self.namespace_name[..std::cmp::min(self.namespace_name.len(), 4)]);
 
         run_cmd("ip", &["link", "add", &veth_host, "type", "veth", "peer", "name", &veth_guest])?;
 
-        // 3. Move the guest end into the namespace
         run_cmd("ip", &["link", "set", &veth_guest, "netns", &self.namespace_name])?;
 
-        // 4. Configure host IP and bring link up
         run_cmd("ip", &["addr", "add", "10.0.0.1/24", "dev", &veth_host])?;
         run_cmd("ip", &["link", "set", &veth_host, "up"])?;
 
-        // 5. Configure guest IP and bring link up
         run_cmd("ip", &["netns", "exec", &self.namespace_name, "ip", "addr", "add", "10.0.0.2/24", "dev", &veth_guest])?;
         run_cmd("ip", &["netns", "exec", &self.namespace_name, "ip", "link", "set", &veth_guest, "up"])?;
-        
-        // 6. Set default route in namespace
+
         run_cmd("ip", &["netns", "exec", &self.namespace_name, "ip", "route", "add", "default", "via", "10.0.0.1"])?;
 
-        // 7. Configure iptables to intercept Port 53 (DNS) and transparently DNAT it to our host proxy (10.0.0.1:53)
         run_cmd("ip", &["netns", "exec", &self.namespace_name, "iptables", "-t", "nat", "-A", "OUTPUT", "-p", "udp", "--dport", "53", "-j", "DNAT", "--to-destination", "10.0.0.1:53"])?;
 
         Ok(())
@@ -52,7 +45,6 @@ impl NetworkIsolator for LinuxNetnsIsolator {
         }
 
         info!("Tearing down network namespace: {}", self.namespace_name);
-        // Deleting the namespace automatically tears down the associated veth devices inside it
         let _ = run_cmd("ip", &["netns", "delete", &self.namespace_name]);
         Ok(())
     }
@@ -62,12 +54,9 @@ impl NetworkIsolator for LinuxNetnsIsolator {
         target_ip: &str,
         target_port: u16,
     ) -> anyhow::Result<(ProxyListener, tokio::task::JoinHandle<()>)> {
-        // Spawn the generic TCP proxy
         let tcp_isolator = super::tcp::TcpProxyIsolator;
         let (proxy, handle) = tcp_isolator.spawn_proxy(target_ip, target_port).await?;
 
-        // In a real implementation, we would spawn a UDP listener on 10.0.0.1:53
-        // using hickory-dns to intercept queries and return 10.0.0.1 for everything
         tokio::spawn(async move {
             if let Ok(socket) = tokio::net::UdpSocket::bind("10.0.0.1:53").await {
                 tracing::info!("DNS Interceptor listening on 10.0.0.1:53");

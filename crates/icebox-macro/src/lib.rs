@@ -45,7 +45,6 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
     let m_kind = map.get("kind").unwrap();
     let kind_ident = format_ident!("{}", m_kind);
 
-    // `capabilities` is optional; when omitted the kind supplies a default set.
     let caps_expr = if let Some(cs) = map.get("capabilities") {
         let idents: Vec<proc_macro2::TokenStream> = cs
             .split(',')
@@ -61,8 +60,6 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! { ::icebox::core::module::Capability::from_kind(::icebox::core::module::ModuleKind::#kind_ident) }
     };
 
-    // `impact` / `intent` are optional authoritive overrides; the literal must
-    // name a `RiskLevel` / `Intent` variant.
     let impact_expr = match map.get("impact") {
         Some(s) => {
             let id = format_ident!("{}", s);
