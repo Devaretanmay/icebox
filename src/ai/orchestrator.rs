@@ -4,9 +4,7 @@ use tokio::task::JoinSet;
 use crate::core::framework::SharedFramework;
 use crate::core::safety::RiskLevel;
 
-use crate::ai::agent::{
-    Agent, AlwaysApprove, CampaignResult, DenyPlan, Planner,
-};
+use crate::ai::agent::{Agent, AlwaysApprove, CampaignResult, DenyPlan, Planner};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CampaignReport {
@@ -245,10 +243,7 @@ mod tests {
         let mut orch = Orchestrator::new(fw.clone(), RiskLevel::Critical);
         orch.set_approved(true);
         let _ = orch
-            .run(
-                &["127.0.0.1".to_string()],
-                || Box::new(MockPlanner::new()),
-            )
+            .run(&["127.0.0.1".to_string()], || Box::new(MockPlanner::new()))
             .await;
         let decs = fw.lock().await.executor.recent_decisions(50);
         assert!(

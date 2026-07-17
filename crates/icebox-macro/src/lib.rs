@@ -168,6 +168,25 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
             #(#opts_fields),*
         }
     };
+    let known_names: Vec<String> = opt_meta
+        .iter()
+        .map(|(fstr, _, _, _)| fstr.clone())
+        .collect();
+    let set_body = if known_names.is_empty() {
+        quote! { Ok(()) }
+    } else {
+        quote! {
+            if !(#( name == #known_names )||*) {
+                return Err(::icebox::core::ModuleError::Other(format!("unknown option: {}", name)));
+            }
+            match name {
+                #(#set_arms,)*
+                _ => unreachable!(),
+            }
+            Ok(())
+        }
+    };
+
     let opts_impl = quote! {
         impl #opts_name {
             pub fn validate(&self) -> Result<(), ::icebox::core::ModuleError> {
@@ -175,11 +194,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
                 Ok(())
             }
             pub fn set(&mut self, name: &str, value: &str) -> Result<(), ::icebox::core::ModuleError> {
-                match name {
-                    #(#set_arms,)*
-                    _ => return Err(::icebox::core::ModuleError::Other(format!("unknown option: {}", name))),
-                }
-                Ok(())
+                #set_body
             }
         }
     };
@@ -219,7 +234,8 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let make_fn_def =
         quote! { fn #make_fn() -> Box<dyn ::icebox::core::Module> { Box::new(#name::default()) } };
-    let info_fn_def = quote! { fn #info_fn() -> ::icebox::core::ModuleInfo { #name::build_info() } };
+    let info_fn_def =
+        quote! { fn #info_fn() -> ::icebox::core::ModuleInfo { #name::build_info() } };
     let linkme_static = quote! {
         #[::linkme::distributed_slice(::icebox::MODULE_REGISTRY)]
         #[linkme(crate = ::linkme)]

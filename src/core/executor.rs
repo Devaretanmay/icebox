@@ -2,9 +2,9 @@ use tracing::info;
 
 use crate::core::module::{LoadedModule, ModuleError, ModuleResult};
 use crate::core::safety::{
-    make_config_policy, now_secs, Charter, ConfigPolicy, DecisionRecord, Evidence,
-    MemoryEntry, MemoryKind, PolicyContext, PolicyDecision, PolicyEngine, PolicySet, Preflight,
-    PreflightError, ReasoningTrace, RiskLevel, ScopeManager,
+    make_config_policy, now_secs, Charter, ConfigPolicy, DecisionRecord, Evidence, MemoryEntry,
+    MemoryKind, PolicyContext, PolicyDecision, PolicyEngine, PolicySet, Preflight, PreflightError,
+    ReasoningTrace, RiskLevel, ScopeManager,
 };
 
 const MAX_DECISIONS: usize = 1000;
@@ -55,7 +55,9 @@ impl ModuleExecutor {
     pub fn policy(&self, context: PolicyContext) -> ConfigPolicy {
         let mut policy = make_config_policy(self.max_risk, context, &self.policy_set);
         if let Some(thr) = self.tier.cvss_threshold() {
-            policy.rules.add_rule(crate::core::safety::PolicyRule::DenyIfCvssAbove(thr));
+            policy
+                .rules
+                .add_rule(crate::core::safety::PolicyRule::DenyIfCvssAbove(thr));
         }
         policy
     }
@@ -113,11 +115,8 @@ impl ModuleExecutor {
         context: PolicyContext,
     ) -> Preflight {
         use crate::core::module::Intent;
-        let destructive = destructive_override.unwrap_or_else(|| {
-            loaded.info.effective_intents().contains(&Intent::Modify)
-        });
-        
-
+        let destructive = destructive_override
+            .unwrap_or_else(|| loaded.info.effective_intents().contains(&Intent::Modify));
 
         Preflight {
             target: target.to_string(),
@@ -145,7 +144,9 @@ impl ModuleExecutor {
         sandbox: bool,
         engine: Option<crate::core::sandbox::SandboxEngineType>,
     ) -> Result<ModuleResult, ExecutorError> {
-        let pf = self.preflight(loaded, target, destructive_override, approved, context).await;
+        let pf = self
+            .preflight(loaded, target, destructive_override, approved, context)
+            .await;
         let policy = self.policy(context);
         let decision = policy.evaluate(&pf.to_request());
         self.record_decision(&loaded.info.name, &pf, &decision);
@@ -153,12 +154,19 @@ impl ModuleExecutor {
 
         if (self.sandbox_required || self.tier.requires_sandbox()) && !sandbox {
             let reason = format!("operational tier {} requires sandbox isolation", self.tier);
-            self.record_decision(&loaded.info.name, &pf, &PolicyDecision::Deny(reason.clone()));
+            self.record_decision(
+                &loaded.info.name,
+                &pf,
+                &PolicyDecision::Deny(reason.clone()),
+            );
             return Err(ExecutorError::Preflight(PreflightError::Denied(reason)));
         }
 
         if self.tier.requires_explicit_approval() && !approved {
-            let reason = format!("operational tier {} requires explicit operator approval", self.tier);
+            let reason = format!(
+                "operational tier {} requires explicit operator approval",
+                self.tier
+            );
             self.record_decision(
                 &loaded.info.name,
                 &pf,
@@ -180,8 +188,13 @@ impl ModuleExecutor {
             if let Ok(preview) = loaded.module.dry_run().await {
                 let denied = policy.denied_payload(&preview);
                 if !denied.is_empty() {
-                    let reason = format!("payload matched denied pattern (pre-execution): {denied}");
-                    self.record_decision(&loaded.info.name, &pf, &PolicyDecision::Deny(reason.clone()));
+                    let reason =
+                        format!("payload matched denied pattern (pre-execution): {denied}");
+                    self.record_decision(
+                        &loaded.info.name,
+                        &pf,
+                        &PolicyDecision::Deny(reason.clone()),
+                    );
                     return Ok(ModuleResult {
                         success: false,
                         evidence: vec![format!("[BLOCKED:payload] {denied}")],
@@ -218,7 +231,11 @@ impl ModuleExecutor {
         let denied = policy.denied_payload(&result);
         if !denied.is_empty() {
             let reason = format!("payload matched denied pattern: {denied}");
-            self.record_decision(&loaded.info.name, &pf, &PolicyDecision::Deny(reason.clone()));
+            self.record_decision(
+                &loaded.info.name,
+                &pf,
+                &PolicyDecision::Deny(reason.clone()),
+            );
             let mut blocked = result;
             blocked.success = false;
             blocked.evidence.push(format!("[BLOCKED:payload] {denied}"));
@@ -324,22 +341,14 @@ impl ModuleExecutor {
                 Ok(result)
             }
             Err(e) => {
-                let reason = format!(
-                    "Sandbox initialization failed: {e}. Isolation is mandatory."
-                );
+                let reason = format!("Sandbox initialization failed: {e}. Isolation is mandatory.");
                 self.record_failure(&module_name, target, &reason, context);
                 Err(ExecutorError::Sandbox(reason))
             }
         }
     }
 
-    fn record_failure(
-        &mut self,
-        module: &str,
-        target: &str,
-        reason: &str,
-        context: PolicyContext,
-    ) {
+    fn record_failure(&mut self, module: &str, target: &str, reason: &str, context: PolicyContext) {
         self.decisions.push(DecisionRecord {
             at: now_secs(),
             target: target.to_string(),

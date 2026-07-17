@@ -148,7 +148,11 @@ static KEV_CACHE: OnceCell<HashSet<String>> = OnceCell::const_new();
 
 async fn fetch_kev_list() -> HashSet<String> {
     let mut set = HashSet::new();
-    if let Ok(resp) = reqwest::get("https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json").await {
+    if let Ok(resp) = reqwest::get(
+        "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+    )
+    .await
+    {
         if let Ok(json) = resp.json::<serde_json::Value>().await {
             if let Some(vulns) = json.get("vulnerabilities").and_then(|v| v.as_array()) {
                 for vuln in vulns {

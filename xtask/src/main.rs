@@ -1,7 +1,7 @@
-use std::path::PathBuf;
-use std::fs;
-use std::process::Command;
 use anyhow::{Context, Result};
+use std::fs;
+use std::path::PathBuf;
+use std::process::Command;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -12,7 +12,9 @@ async fn main() -> Result<()> {
         "build-sandbox-worker" => build_sandbox_worker()?,
         _ => {
             println!("Usage: cargo xtask <task>");
-            println!("  build-sandbox-worker Build dist/icebox-worker (Linux musl) for the sandbox");
+            println!(
+                "  build-sandbox-worker Build dist/icebox-worker (Linux musl) for the sandbox"
+            );
         }
     }
     Ok(())
@@ -71,8 +73,7 @@ fn build_sandbox_worker() -> Result<()> {
                 "cross build failed; install musl target + linker (rustup target add x86_64-unknown-linux-musl)"
             );
         }
-        let src = root
-            .join("target/x86_64-unknown-linux-musl/release/icebox-daemon");
+        let src = root.join("target/x86_64-unknown-linux-musl/release/icebox-daemon");
         fs::copy(&src, dist.join("icebox-worker")).context("copy worker binary")?;
     }
     println!("Built dist/icebox-worker");

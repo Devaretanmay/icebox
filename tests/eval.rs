@@ -20,7 +20,9 @@ async fn decide(
     target: &str,
     approved: bool,
 ) -> PolicyDecision {
-    let pf = exec.preflight(loaded, target, None, approved, PolicyContext::Cli).await;
+    let pf = exec
+        .preflight(loaded, target, None, approved, PolicyContext::Cli)
+        .await;
     exec.policy(PolicyContext::Cli).evaluate(&pf.to_request())
 }
 

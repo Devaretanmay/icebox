@@ -25,7 +25,14 @@ async fn test_rest_requires_token() {
     let addr = free_addr();
     let fw = make_fw();
     tokio::spawn(async move {
-        let _ = serve(fw, addr, AuthState { token: Some("secret".into()) }).await;
+        let _ = serve(
+            fw,
+            addr,
+            AuthState {
+                token: Some("secret".into()),
+            },
+        )
+        .await;
     });
     tokio::time::sleep(Duration::from_millis(300)).await;
 

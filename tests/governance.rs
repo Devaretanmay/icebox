@@ -345,7 +345,8 @@ async fn deny_payload_blocks_generator_pre_execution() {
         ScopeManager::new(vec!["0.0.0.0/0".into()]),
         RiskLevel::Critical,
     );
-    exec.policy_set.add_rule(PolicyRule::DenyPayload("payload/bash".into()));
+    exec.policy_set
+        .add_rule(PolicyRule::DenyPayload("payload/bash".into()));
 
     let res = exec
         .execute(

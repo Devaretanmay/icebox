@@ -6,7 +6,6 @@ use crate::core::governance::{ApprovalQueue, PolicyPackStore, Role};
 use crate::core::job::JobManager;
 use crate::core::session::SessionManager;
 
-
 pub struct Framework {
     pub executor: ModuleExecutor,
     pub sessions: SessionManager,
@@ -15,7 +14,14 @@ pub struct Framework {
     pub policy_packs: PolicyPackStore,
     pub approval_queue: ApprovalQueue,
     #[allow(clippy::type_complexity)]
-    pub proxies: std::collections::HashMap<u16, (String, Box<dyn crate::core::proxy::NetworkIsolator>, tokio::task::JoinHandle<()>)>,
+    pub proxies: std::collections::HashMap<
+        u16,
+        (
+            String,
+            Box<dyn crate::core::proxy::NetworkIsolator>,
+            tokio::task::JoinHandle<()>,
+        ),
+    >,
 }
 
 impl Framework {

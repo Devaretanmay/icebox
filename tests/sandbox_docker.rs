@@ -71,5 +71,3 @@ async fn test_sandbox_policy_enforcement() {
         .await;
     assert!(native.is_err(), "policy must block without sandbox");
 }
-
-

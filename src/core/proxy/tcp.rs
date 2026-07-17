@@ -1,6 +1,6 @@
-use tokio::net::{TcpListener, TcpStream};
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+use tokio::net::{TcpListener, TcpStream};
 use tracing::{info, warn};
 
 use super::{NetworkIsolator, ProxyListener};
@@ -93,13 +93,21 @@ impl NetworkIsolator for TcpProxyIsolator {
                                 }
                             });
                         }
-                        Ok(Err(e)) => warn!("Proxy failed to connect to target {}: {}", target_addr, e),
+                        Ok(Err(e)) => {
+                            warn!("Proxy failed to connect to target {}: {}", target_addr, e)
+                        }
                         Err(_) => warn!("Proxy connect timeout to target {}", target_addr),
                     }
                 }
             }
         });
 
-        Ok((ProxyListener { local_addr, target_addr }, handle))
+        Ok((
+            ProxyListener {
+                local_addr,
+                target_addr,
+            },
+            handle,
+        ))
     }
 }

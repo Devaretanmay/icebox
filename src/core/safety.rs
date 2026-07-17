@@ -705,7 +705,10 @@ impl ConfigPolicy {
     }
 
     pub fn has_deny_payload(&self) -> bool {
-        self.rules.rules.iter().any(|r| matches!(r, PolicyRule::DenyPayload(_)))
+        self.rules
+            .rules
+            .iter()
+            .any(|r| matches!(r, PolicyRule::DenyPayload(_)))
     }
 }
 

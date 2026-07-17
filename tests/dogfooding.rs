@@ -113,7 +113,8 @@ async fn leaked_loaded_module_bypasses_all_gates() {
         g.executor.scope = ScopeManager::new(vec!["127.0.0.5".into()]);
         let pf = g
             .executor
-            .preflight(&loaded, "127.0.0.5", None, false, PolicyContext::Autonomous).await;
+            .preflight(&loaded, "127.0.0.5", None, false, PolicyContext::Autonomous)
+            .await;
         let policy = g.executor.policy(PolicyContext::Autonomous);
         assert!(
             pf.check(&policy).is_err(),
@@ -137,7 +138,8 @@ async fn policy_deny_always_wins_over_approval() {
     let pf = {
         let g = fw.lock().await;
         g.executor
-            .preflight(&loaded, "10.0.0.5", None, true, PolicyContext::Autonomous).await
+            .preflight(&loaded, "10.0.0.5", None, true, PolicyContext::Autonomous)
+            .await
     };
     let policy = {
         let g = fw.lock().await;
@@ -166,7 +168,8 @@ async fn max_risk_ceiling_cannot_be_bypassed() {
     let pf = {
         let g = fw.lock().await;
         g.executor
-            .preflight(&loaded, "10.0.0.5", None, true, PolicyContext::Autonomous).await
+            .preflight(&loaded, "10.0.0.5", None, true, PolicyContext::Autonomous)
+            .await
     };
     let policy = {
         let g = fw.lock().await;
@@ -237,7 +240,8 @@ async fn options_cannot_override_policy() {
     let pf = {
         let g = fw.lock().await;
         g.executor
-            .preflight(&loaded, "10.0.0.99", None, false, PolicyContext::Autonomous).await
+            .preflight(&loaded, "10.0.0.99", None, false, PolicyContext::Autonomous)
+            .await
     };
 
     assert!(
@@ -289,7 +293,8 @@ async fn audit_trail_links_decisions_to_evidence_to_preflight() {
     let preflight = {
         let g = fw.lock().await;
         g.executor
-            .preflight(&loaded, target, None, false, PolicyContext::Autonomous).await
+            .preflight(&loaded, target, None, false, PolicyContext::Autonomous)
+            .await
     };
 
     let (result, _) = run_through_seam(&fw, &mut loaded, target, false).await;
@@ -330,7 +335,8 @@ async fn denied_decisions_include_reason() {
     let pf = {
         let g = fw.lock().await;
         g.executor
-            .preflight(&loaded, "10.0.0.5", None, false, PolicyContext::Autonomous).await
+            .preflight(&loaded, "10.0.0.5", None, false, PolicyContext::Autonomous)
+            .await
     };
     let policy = {
         let g = fw.lock().await;
@@ -630,7 +636,8 @@ async fn multi_agent_policy_is_coherent() {
         let pf = {
             let g = fw.lock().await;
             g.executor
-                .preflight(&loaded, "127.0.0.1", None, true, PolicyContext::Autonomous).await
+                .preflight(&loaded, "127.0.0.1", None, true, PolicyContext::Autonomous)
+                .await
         };
         let policy = {
             let g = fw.lock().await;
@@ -646,8 +653,8 @@ async fn multi_agent_policy_is_coherent() {
 
 #[tokio::test]
 async fn orchestrated_agents_share_audit_trail() {
+    use icebox::ai::agent::{Action, AnalysisOutput, Planner, ReportOutput};
     use icebox::ai::Orchestrator;
-    use icebox::ai::agent::{Action, AnalysisOutput, ReportOutput, Planner};
 
     pub struct MockPlanner {
         pub actions: Vec<Action>,
@@ -994,7 +1001,8 @@ async fn cvss_multi_condition_require_approval_if() {
         let g = fw.lock().await;
         let mut req = g
             .executor
-            .preflight(&loaded, "10.0.0.5", None, false, PolicyContext::Autonomous).await
+            .preflight(&loaded, "10.0.0.5", None, false, PolicyContext::Autonomous)
+            .await
             .to_request();
         req.cvss = Some(CvssScore {
             cvss_v31: Some(9.0),
@@ -1014,7 +1022,8 @@ async fn cvss_multi_condition_require_approval_if() {
         let g = fw.lock().await;
         let mut req = g
             .executor
-            .preflight(&loaded, "10.0.0.5", None, false, PolicyContext::Autonomous).await
+            .preflight(&loaded, "10.0.0.5", None, false, PolicyContext::Autonomous)
+            .await
             .to_request();
         req.cvss = Some(CvssScore {
             cvss_v31: Some(6.0),
@@ -1034,7 +1043,8 @@ async fn cvss_multi_condition_require_approval_if() {
         let g = fw.lock().await;
         let mut req = g
             .executor
-            .preflight(&loaded, "10.0.0.5", None, false, PolicyContext::Autonomous).await
+            .preflight(&loaded, "10.0.0.5", None, false, PolicyContext::Autonomous)
+            .await
             .to_request();
         req.cvss = Some(CvssScore {
             cvss_v31: Some(6.0),
@@ -1054,7 +1064,8 @@ async fn cvss_multi_condition_require_approval_if() {
         let g = fw.lock().await;
         let mut req = g
             .executor
-            .preflight(&loaded, "10.0.0.5", None, true, PolicyContext::Autonomous).await
+            .preflight(&loaded, "10.0.0.5", None, true, PolicyContext::Autonomous)
+            .await
             .to_request();
         req.cvss = Some(CvssScore {
             cvss_v31: Some(5.0),

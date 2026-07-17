@@ -58,10 +58,10 @@ pub fn diff(a: &ValidationReport, b: &ValidationReport) -> ValidationDiff {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ai::agent::{Action, AnalysisOutput, ReportOutput};
     use crate::core::executor::ModuleExecutor;
     use crate::core::framework::new_shared_framework;
     use crate::core::safety::{Charter, ScopeManager};
-    use crate::ai::agent::{Action, AnalysisOutput, ReportOutput};
 
     pub struct MockPlanner {
         pub actions: Vec<Action>,

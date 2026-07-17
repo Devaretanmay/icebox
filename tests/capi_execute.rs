@@ -16,7 +16,9 @@ async fn test_cabi_executes() {
     opts.insert("host".to_string(), "127.0.0.1".to_string());
     opts.insert("ports".to_string(), "1".to_string());
 
-    let out = rt.execute_module("tcp_port_scanner", "127.0.0.1", &opts).await;
+    let out = rt
+        .execute_module("tcp_port_scanner", "127.0.0.1", &opts)
+        .await;
     assert!(out.is_ok(), "capi must execute the module, got: {out:?}");
 
     let json: Value = serde_json::from_str(&out.unwrap()).expect("valid ModuleResult json");

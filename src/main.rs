@@ -131,7 +131,9 @@ async fn main() -> anyhow::Result<()> {
 
     if api_only {
         std::thread::sleep(std::time::Duration::from_millis(200));
-        api_handle.join().map_err(|_| anyhow::anyhow!("API thread panicked"))??;
+        api_handle
+            .join()
+            .map_err(|_| anyhow::anyhow!("API thread panicked"))??;
         return Ok(());
     }
 
@@ -153,8 +155,16 @@ async fn main() -> anyhow::Result<()> {
         let fw_arc = s.fw.clone();
         if matches!(
             c.as_str(),
-            "agent" | "save" | "load" | "validate" | "role" | "pack" | "approve" | "campaign"
-                | "proxy" | "tier"
+            "agent"
+                | "save"
+                | "load"
+                | "validate"
+                | "role"
+                | "pack"
+                | "approve"
+                | "campaign"
+                | "proxy"
+                | "tier"
         ) {
             drop(s);
             match c.as_str() {
@@ -213,13 +223,16 @@ async fn cmd_use(a: &[&str], s: &mut CliState, fw: &Framework) {
     }
     match icebox::modules::load(&n) {
         Some(l) => {
-            let pf = fw.executor.preflight(
-                &l,
-                &s.target.clone().unwrap_or_default(),
-                None,
-                false,
-                PolicyContext::Cli,
-            ).await;
+            let pf = fw
+                .executor
+                .preflight(
+                    &l,
+                    &s.target.clone().unwrap_or_default(),
+                    None,
+                    false,
+                    PolicyContext::Cli,
+                )
+                .await;
             let scope_note = match &s.target {
                 Some(_) => format!("in-scope: {}", pf.in_scope),
                 None => "in-scope: n/a (set a target with `run <target>`)".to_string(),
@@ -657,7 +670,8 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
 
     let pf = fw
         .executor
-        .preflight(l, &target, None, approved, PolicyContext::Cli).await;
+        .preflight(l, &target, None, approved, PolicyContext::Cli)
+        .await;
     if let Err(e) = pf.check(&fw.executor.policy(PolicyContext::Cli)) {
         println!("{COLOR_ORANGE}BLOCKED: {e}{COLOR_RESET}");
         if pf.risk >= RiskLevel::High {
@@ -666,9 +680,7 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
         return;
     }
     if sandbox {
-        println!(
-            "{COLOR_TEAL}[SANDBOX] isolation enabled - preflight still enforced{COLOR_RESET}"
-        );
+        println!("{COLOR_TEAL}[SANDBOX] isolation enabled - preflight still enforced{COLOR_RESET}");
     } else {
         println!("preflight passed");
     }
@@ -753,7 +765,8 @@ async fn cmd_policy(a: &[&str], s: &CliState, fw: &mut Framework) {
     };
     let pf = fw
         .executor
-        .preflight(&loaded, &target, None, false, PolicyContext::Cli).await;
+        .preflight(&loaded, &target, None, false, PolicyContext::Cli)
+        .await;
     let policy = fw.executor.policy(PolicyContext::Cli);
     let decision = policy.evaluate(&pf.to_request());
     println!("module: {}", loaded.info.name);
@@ -1238,18 +1251,18 @@ async fn cmd_proxy(a: &[&str], fw: SharedFramework) {
             }
             use icebox::core::proxy::{bind_proxy as reg_bind, NetworkIsolator};
             #[cfg(target_os = "linux")]
-            let isolator: Box<dyn NetworkIsolator> = Box::new(icebox::core::proxy::netns::LinuxNetnsIsolator {
-                namespace_name: format!("icebox-netns-{}", std::process::id()),
-            });
+            let isolator: Box<dyn NetworkIsolator> =
+                Box::new(icebox::core::proxy::netns::LinuxNetnsIsolator {
+                    namespace_name: format!("icebox-netns-{}", std::process::id()),
+                });
 
             #[cfg(not(target_os = "linux"))]
-            let isolator: Box<dyn NetworkIsolator> = Box::new(icebox::core::proxy::tcp::TcpProxyIsolator);
+            let isolator: Box<dyn NetworkIsolator> =
+                Box::new(icebox::core::proxy::tcp::TcpProxyIsolator);
 
             let _ = isolator.setup().await;
-            
-            let Ok((listener, handle)) =
-                isolator.spawn_proxy(&target, port).await
-            else {
+
+            let Ok((listener, handle)) = isolator.spawn_proxy(&target, port).await else {
                 println!("{COLOR_ORANGE}failed to bind proxy for {target}{COLOR_RESET}");
                 return;
             };

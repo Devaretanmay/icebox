@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
-use std::path::PathBuf;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+use std::path::PathBuf;
 
 use axum::extract::{Path, Query, Request, State};
 use axum::http::{header, HeaderValue, StatusCode};
@@ -214,7 +214,10 @@ pub fn resolve_auth(no_auth: bool, explicit: Option<String>) -> AuthState {
 
 async fn require_auth(req: Request, next: Next) -> Result<Response, StatusCode> {
     let token = req.extensions().get::<AuthState>().cloned();
-    if let Some(AuthState { token: Some(expected) }) = token {
+    if let Some(AuthState {
+        token: Some(expected),
+    }) = token
+    {
         let ok = req
             .headers()
             .get(header::AUTHORIZATION)
@@ -228,11 +231,7 @@ async fn require_auth(req: Request, next: Next) -> Result<Response, StatusCode> 
     Ok(next.run(req).await)
 }
 
-pub async fn serve(
-    fw: SharedFramework,
-    addr: SocketAddr,
-    auth: AuthState,
-) -> anyhow::Result<()> {
+pub async fn serve(fw: SharedFramework, addr: SocketAddr, auth: AuthState) -> anyhow::Result<()> {
     let auth_layer = middleware::from_fn(move |mut req: Request, next: Next| {
         let auth = auth.clone();
         async move {
@@ -335,7 +334,8 @@ async fn get_module(
     };
     let pf = fw
         .executor
-        .preflight(&loaded, "", None, false, PolicyContext::Rest).await;
+        .preflight(&loaded, "", None, false, PolicyContext::Rest)
+        .await;
     Json(Some(ModuleDetail {
         name: loaded.info.name.clone(),
         kind: loaded.info.kind.as_str().into(),
@@ -468,13 +468,16 @@ async fn run_module(
         };
         let _ = loaded.module.set_option(k, &s);
     }
-    let pf = fw.executor.preflight(
-        &loaded,
-        &payload.target,
-        None,
-        payload.approved,
-        PolicyContext::Rest,
-    ).await;
+    let pf = fw
+        .executor
+        .preflight(
+            &loaded,
+            &payload.target,
+            None,
+            payload.approved,
+            PolicyContext::Rest,
+        )
+        .await;
     let policy = fw.executor.policy(PolicyContext::Rest);
     let report = to_preflight_report(&pf, &policy);
     if let Err(ref e) = pf.check(&policy) {
@@ -934,7 +937,12 @@ async fn request_approval(
     let id = fw
         .approval_queue
         .request(input.module, input.target, input.reason, input.options);
-    Json(fw.approval_queue.get(id).cloned().expect("Approval queue missing requested id"))
+    Json(
+        fw.approval_queue
+            .get(id)
+            .cloned()
+            .expect("Approval queue missing requested id"),
+    )
 }
 
 async fn approve_approval(
@@ -1076,13 +1084,16 @@ async fn bind_proxy(
         },
         module: Box::new(VirtualModule),
     };
-    let pf = fw.executor.preflight(
-        &proxy_module,
-        &payload.target,
-        None,
-        false,
-        PolicyContext::Rest,
-    ).await;
+    let pf = fw
+        .executor
+        .preflight(
+            &proxy_module,
+            &payload.target,
+            None,
+            false,
+            PolicyContext::Rest,
+        )
+        .await;
     let policy = fw.executor.policy(PolicyContext::Rest);
     let report = to_preflight_report(&pf, &policy);
 
@@ -1095,11 +1106,12 @@ async fn bind_proxy(
     }
 
     use crate::core::proxy::NetworkIsolator;
-    
+
     #[cfg(target_os = "linux")]
-    let isolator: Box<dyn NetworkIsolator> = Box::new(crate::core::proxy::netns::LinuxNetnsIsolator {
-        namespace_name: format!("icebox-netns-{}", std::process::id()),
-    });
+    let isolator: Box<dyn NetworkIsolator> =
+        Box::new(crate::core::proxy::netns::LinuxNetnsIsolator {
+            namespace_name: format!("icebox-netns-{}", std::process::id()),
+        });
 
     #[cfg(not(target_os = "linux"))]
     let isolator: Box<dyn NetworkIsolator> = Box::new(crate::core::proxy::tcp::TcpProxyIsolator);
@@ -1111,7 +1123,8 @@ async fn bind_proxy(
         Ok((listener, handle)) => {
             let port = listener.local_addr.port();
             crate::core::proxy::bind_proxy(&payload.target, listener.local_addr);
-            fw.proxies.insert(port, (payload.target.clone(), isolator, handle));
+            fw.proxies
+                .insert(port, (payload.target.clone(), isolator, handle));
             Json(ProxyBindResponse {
                 local_port: port,
                 preflight: Some(report),
@@ -1153,5 +1166,8 @@ async fn unbind_proxy(
         let _ = isolator.teardown().await;
         handle.abort();
     }
-    Json(ProxyUnbindResponse { ok: true, error: None })
+    Json(ProxyUnbindResponse {
+        ok: true,
+        error: None,
+    })
 }

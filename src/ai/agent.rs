@@ -8,7 +8,6 @@ use crate::core::safety::{
 };
 use crate::core::session::{Session, SessionId, SessionKind};
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
     Idle,
@@ -521,13 +520,16 @@ impl Agent {
                     .set_option("ports", "22,80,443,3306,5432,6379,8080,8443");
             }
             let mut fw = self.fw.lock().await;
-            let pf = fw.executor.preflight(
-                &loaded,
-                &self.target,
-                None,
-                self.approved,
-                PolicyContext::Autonomous,
-            ).await;
+            let pf = fw
+                .executor
+                .preflight(
+                    &loaded,
+                    &self.target,
+                    None,
+                    self.approved,
+                    PolicyContext::Autonomous,
+                )
+                .await;
             let policy = make_config_policy(
                 self.max_risk,
                 PolicyContext::Autonomous,
@@ -632,13 +634,16 @@ impl Agent {
             }
 
             let mut fw = self.fw.lock().await;
-            let pf = fw.executor.preflight(
-                &loaded_mut,
-                &self.target,
-                None,
-                self.approved,
-                PolicyContext::Autonomous,
-            ).await;
+            let pf = fw
+                .executor
+                .preflight(
+                    &loaded_mut,
+                    &self.target,
+                    None,
+                    self.approved,
+                    PolicyContext::Autonomous,
+                )
+                .await;
             let policy = make_config_policy(
                 self.max_risk,
                 PolicyContext::Autonomous,

@@ -41,16 +41,18 @@ impl OpenAiClient {
         messages: Vec<crate::ai::ollama::Message>,
         format: Option<serde_json::Value>,
     ) -> anyhow::Result<crate::ai::ollama::Message> {
-        let response_format = format.map(|schema| {
-            serde_json::json!({
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "schema",
-                    "schema": schema,
-                    "strict": true
-                }
+        let response_format = format
+            .map(|schema| {
+                serde_json::json!({
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "schema",
+                        "schema": schema,
+                        "strict": true
+                    }
+                })
             })
-        }).or_else(|| Some(serde_json::json!({"type": "json_object"})));
+            .or_else(|| Some(serde_json::json!({"type": "json_object"})));
 
         let body = ChatRequest {
             model: self.model.clone(),
@@ -73,9 +75,15 @@ impl OpenAiClient {
             return Err(anyhow::anyhow!("OpenAI API error ({status}): {text}"));
         }
 
-        let mut cr: ChatResponse = resp.json().await.map_err(|e| anyhow::anyhow!("OpenAI JSON parse error: {e}"))?;
-        
-        cr.choices.pop().map(|c| c.message).ok_or_else(|| anyhow::anyhow!("No choices returned from OpenAI"))
+        let mut cr: ChatResponse = resp
+            .json()
+            .await
+            .map_err(|e| anyhow::anyhow!("OpenAI JSON parse error: {e}"))?;
+
+        cr.choices
+            .pop()
+            .map(|c| c.message)
+            .ok_or_else(|| anyhow::anyhow!("No choices returned from OpenAI"))
     }
 
     pub async fn prompt(

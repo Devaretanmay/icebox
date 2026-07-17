@@ -64,4 +64,3 @@ pub fn resolve_dial(host: &str, port: u16) -> String {
     }
     format!("{host}:{port}")
 }
-

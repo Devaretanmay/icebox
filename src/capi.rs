@@ -119,7 +119,9 @@ pub extern "C" fn icebox_pending(handle: *mut c_void) -> *mut c_char {
         Some(g) => g,
         None => return to_cstring("[]".into()),
     };
-    let Some(rt) = tokio_rt() else { return to_cstring("[]".into()) };
+    let Some(rt) = tokio_rt() else {
+        return to_cstring("[]".into());
+    };
     let pending = rt.block_on(gov.pending_approvals());
     to_cstring(serde_json::to_string(&pending).unwrap_or_else(|_| "[]".into()))
 }
@@ -130,7 +132,9 @@ pub extern "C" fn icebox_audit_json(handle: *mut c_void) -> *mut c_char {
         Some(g) => g,
         None => return to_cstring("[]".into()),
     };
-    let Some(rt) = tokio_rt() else { return to_cstring("[]".into()) };
+    let Some(rt) = tokio_rt() else {
+        return to_cstring("[]".into());
+    };
     to_cstring(rt.block_on(gov.export_audit_json()))
 }
 
@@ -140,7 +144,9 @@ pub extern "C" fn icebox_audit_csv(handle: *mut c_void) -> *mut c_char {
         Some(g) => g,
         None => return to_cstring(String::new()),
     };
-    let Some(rt) = tokio_rt() else { return to_cstring(String::new()) };
+    let Some(rt) = tokio_rt() else {
+        return to_cstring(String::new());
+    };
     to_cstring(rt.block_on(gov.export_audit_csv()))
 }
 

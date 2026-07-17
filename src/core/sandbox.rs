@@ -1,3 +1,4 @@
+use crate::core::module::ModuleResult;
 use bollard::container::LogOutput;
 use bollard::exec::{CreateExecOptions, StartExecOptions, StartExecResults};
 use bollard::models::ContainerCreateBody;
@@ -6,7 +7,6 @@ use bollard::query_parameters::{
 };
 use bollard::Docker;
 use futures_util::StreamExt;
-use crate::core::module::ModuleResult;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SandboxEngineType {
@@ -22,7 +22,9 @@ pub enum Sandbox {
 pub enum SandboxError {
     #[error("docker: {0}")]
     Docker(#[from] bollard::errors::Error),
-    #[error("sandbox worker binary not found. Run: cargo xtask build-sandbox-worker (requires Docker)")]
+    #[error(
+        "sandbox worker binary not found. Run: cargo xtask build-sandbox-worker (requires Docker)"
+    )]
     Unavailable,
     #[error("worker error: {0}")]
     Worker(String),
@@ -110,9 +112,10 @@ async fn ensure_image(docker: &Docker, image: &str) -> Result<(), SandboxError> 
         };
         let dir = std::env::temp_dir().join("icebox-sandbox-build");
         let _ = std::fs::create_dir_all(&dir);
-        let _ = std::fs::write(dir.join("icebox-worker"), std::fs::read(&worker).map_err(|e| {
-            SandboxError::Worker(e.to_string())
-        })?);
+        let _ = std::fs::write(
+            dir.join("icebox-worker"),
+            std::fs::read(&worker).map_err(|e| SandboxError::Worker(e.to_string()))?,
+        );
         let _ = std::fs::write(
             dir.join("Dockerfile"),
             "FROM alpine:3.20\nCOPY icebox-worker /usr/local/bin/icebox-worker\nRUN chmod +x /usr/local/bin/icebox-worker\n",
@@ -128,17 +131,14 @@ async fn ensure_image(docker: &Docker, image: &str) -> Result<(), SandboxError> 
         }
         return Err(SandboxError::Unavailable);
     }
-    let mut stream = docker
-        .create_image(
-            Some(
-                bollard::query_parameters::CreateImageOptions {
-                    from_image: Some(image.to_string()),
-                    ..Default::default()
-                },
-            ),
-            None,
-            None,
-        );
+    let mut stream = docker.create_image(
+        Some(bollard::query_parameters::CreateImageOptions {
+            from_image: Some(image.to_string()),
+            ..Default::default()
+        }),
+        None,
+        None,
+    );
     while stream.next().await.is_some() {}
     Ok(())
 }
@@ -148,12 +148,12 @@ impl DockerSandbox {
         Docker::connect_with_local_defaults()
             .and_then(|d| {
                 std::thread::spawn(move || {
-                    let rt = tokio::runtime::Runtime::new().map_err(
-                        |_| bollard::errors::Error::DockerResponseServerError {
+                    let rt = tokio::runtime::Runtime::new().map_err(|_| {
+                        bollard::errors::Error::DockerResponseServerError {
                             status_code: 500,
                             message: "runtime creation failed".into(),
-                        },
-                    )?;
+                        }
+                    })?;
                     rt.block_on(d.ping())
                 })
                 .join()
@@ -300,7 +300,10 @@ impl DockerSandbox {
             .await?;
         let id = create.id;
         let mut stdout: Vec<u8> = Vec::new();
-        let stream = self.docker.start_exec(&id, None::<StartExecOptions>).await?;
+        let stream = self
+            .docker
+            .start_exec(&id, None::<StartExecOptions>)
+            .await?;
         if let StartExecResults::Attached { mut output, .. } = stream {
             while let Some(chunk) = output.next().await {
                 match chunk {
@@ -323,5 +326,3 @@ impl DockerSandbox {
             .map_err(|e| SandboxError::Worker(format!("failed to parse worker output: {e}")))
     }
 }
-
-
