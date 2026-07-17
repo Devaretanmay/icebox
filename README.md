@@ -19,9 +19,9 @@ ICEBOX is the runtime governance layer for autonomous security agents and offens
 
 ICEBOX supports three distinct governance tiers to match your operational risk profile:
 
-* **The Fridge** (Development): Basic guardrails and audit logging. Ideal for local testing and non-destructive agents.
-* **The Freezer** (Staging): Enforced CVSS limits and sandbox containment. Designed for safe, controlled execution.
-* **The Deep Freezer** (Production): Maximum security with strict explicit approvals, multi-factor sign-off, and absolute containment. Perfect for production environments.
+* **The Fridge** (Development): Basic guardrails and audit logging; sandbox is optional. Ideal for local testing and non-destructive agents.
+* **The Freezer** (Staging): Mandatory sandbox containment and an enforced CVSS limit (CVEs at or above 7.0 are blocked). Designed for safe, controlled execution.
+* **The Deep Freezer** (Production): Mandatory sandbox, a stricter CVSS limit (at or above 4.0 blocked), and explicit operator approval required for every execution. Set with `tier set deep_freeze`.
 
 <div align="center">
   <img src="assets/icebox-pipeline.png" alt="ICEBOX Governance Pipeline" width="800" />
@@ -58,7 +58,7 @@ ICEBOX enforces governance at exactly one point: `ModuleExecutor::execute()`. Ev
 
 ### 2. Mandatory Sandboxing
 
-By default, any action executed by an agent is safely contained inside an ephemeral Docker or Firecracker VM sandbox. This prevents security modules from modifying your host system or accessing sensitive local credentials. A module cannot break out of its container unless explicitly permitted by your configuration. Real payloads (e.g. port scans, SQL injections) are safely routed against disposable proxy targets.
+Any action executed by an agent can be safely contained inside an ephemeral Docker sandbox (Firecracker is not supported for module execution). This prevents security modules from modifying your host system or accessing sensitive local credentials. A module cannot break out of its container unless explicitly permitted by your configuration. When an operator binds a proxy for a target, real payloads (e.g. port scans, SQL injections) are routed through that disposable proxy target rather than the agent's host.
 
 ### 3. Scope and Risk Management
 

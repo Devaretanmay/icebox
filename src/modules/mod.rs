@@ -379,7 +379,7 @@ impl Module for TcpPortScanner {
             let h = host.clone();
             handles.push(tokio::spawn(async move {
                 let _permit = permit;
-                let addr = format!("{}:{}", h, port);
+                let addr = crate::core::proxy::resolve_dial(&h, port);
                 match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await {
                     Ok(Ok(_)) => Some(port),
                     _ => None,
@@ -508,7 +508,7 @@ impl Module for HttpProbe {
             let req = request.to_vec();
             handles.push(tokio::spawn(async move {
                 let _permit = permit;
-                let addr = format!("{}:{}", h, port);
+                let addr = crate::core::proxy::resolve_dial(&h, port);
                 let stream = match tokio::time::timeout(
                     timeout,
                     tokio::net::TcpStream::connect(&addr),
@@ -799,7 +799,7 @@ impl Module for ServiceFingerprinter {
             let probe = Self::probe_for_port(port).to_vec();
             handles.push(tokio::spawn(async move {
                 let _permit = permit;
-                let addr = format!("{}:{}", h, port);
+                let addr = crate::core::proxy::resolve_dial(&h, port);
                 let stream = match tokio::time::timeout(
                     timeout,
                     tokio::net::TcpStream::connect(&addr),

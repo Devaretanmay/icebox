@@ -1,0 +1,9 @@
+[package]
+name = "custom_module"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+icebox = { path = "../../" }
+icebox-macro = { path = "../../crates/icebox-macro" }
+tokio = { version = "1", features = ["full"] }

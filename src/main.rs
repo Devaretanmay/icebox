@@ -23,6 +23,56 @@ struct CliState {
     target: Option<String>,
 }
 
+async fn run_worker(args: &[String]) -> anyhow::Result<()> {
+    let mut name = None;
+    let mut target = String::new();
+    let mut options = serde_json::Value::Null;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--module" => name = it.next().cloned(),
+            "--target" => target = it.next().cloned().unwrap_or_default(),
+            "--options" => {
+                options = it
+                    .next()
+                    .and_then(|s| serde_json::from_str(s).ok())
+                    .unwrap_or(serde_json::Value::Null)
+            }
+            _ => {}
+        }
+    }
+    let Some(name) = name else {
+        eprintln!("worker: --module required");
+        std::process::exit(2);
+    };
+    let Some(mut loaded) = icebox::modules::load(&name) else {
+        eprintln!("worker: module not found: {name}");
+        std::process::exit(2);
+    };
+    if let Some(obj) = options.as_object() {
+        for (k, v) in obj {
+            let s = match v {
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            let _ = loaded.module.set_option(k, &s);
+        }
+    }
+    if !target.is_empty() {
+        let _ = loaded.module.set_option("target", &target);
+    }
+    match loaded.module.run().await {
+        Ok(r) => {
+            println!("{}", serde_json::to_string(&r).unwrap_or_default());
+            std::process::exit(0);
+        }
+        Err(e) => {
+            eprintln!("worker: run error: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -36,11 +86,22 @@ async fn main() -> anyhow::Result<()> {
         println!("USAGE:");
         println!("  icebox            Start interactive REPL + REST API (http://127.0.0.1:8443)");
         println!("  icebox --api     Start the REST API only");
+        println!("  icebox --no-auth Start without REST authentication (local dev only)");
+        println!("  icebox --auth-token <t>  Use explicit REST auth token");
         println!("  icebox --version  Print version and exit");
         println!("  icebox --help     Show this help and exit");
         return Ok(());
     }
+    if let Some(pos) = args.iter().position(|a| a == "worker") {
+        return run_worker(&args[pos + 1..]).await;
+    }
     let api_only = args.iter().any(|a| a == "--api");
+    let no_auth = args.iter().any(|a| a == "--no-auth");
+    let auth_token = args
+        .iter()
+        .position(|a| a == "--auth-token")
+        .and_then(|i| args.get(i + 1).cloned());
+    let auth = icebox::interfaces::rest::resolve_auth(no_auth, auth_token);
     let fw = new_shared_framework(ModuleExecutor::new(
         Charter::default(),
         ScopeManager::default(),
@@ -56,13 +117,17 @@ async fn main() -> anyhow::Result<()> {
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 8443));
     let api_handle = std::thread::spawn(move || {
         let rt = tokio::runtime::Runtime::new().expect("API rt");
-        rt.block_on(async { icebox::interfaces::rest::serve(fw_api, addr).await })
+        rt.block_on(async { icebox::interfaces::rest::serve(fw_api, addr, auth).await })
     });
-    eprintln!("REST API http://{addr}/api/v1");
+    if no_auth {
+        eprintln!("REST API http://{addr}/api/v1  (AUTH DISABLED --no-auth)");
+    } else {
+        eprintln!("REST API http://{addr}/api/v1  (Bearer token in ~/.icebox/auth.token)");
+    }
 
     if api_only {
         std::thread::sleep(std::time::Duration::from_millis(200));
-        api_handle.join().unwrap()?;
+        api_handle.join().map_err(|_| anyhow::anyhow!("API thread panicked"))??;
         return Ok(());
     }
 
@@ -85,6 +150,7 @@ async fn main() -> anyhow::Result<()> {
         if matches!(
             c.as_str(),
             "agent" | "save" | "load" | "validate" | "role" | "pack" | "approve" | "campaign"
+                | "proxy" | "tier"
         ) {
             drop(s);
             match c.as_str() {
@@ -96,13 +162,15 @@ async fn main() -> anyhow::Result<()> {
                 "role" => cmd_role(a, fw_arc.clone()).await,
                 "pack" => cmd_pack(a, fw_arc.clone()).await,
                 "approve" => cmd_approve(a, fw_arc.clone()).await,
+                "proxy" => cmd_proxy(a, fw_arc.clone()).await,
+                "tier" => cmd_tier(a, fw_arc.clone()).await,
                 _ => unreachable!(),
             }
         } else {
             let mut fw = fw_arc.lock().await;
             let fw: &mut Framework = &mut fw;
             match c.as_str() {
-                "help" | "?" => println!("Commands: help list use info set show charter scope run sessions jobs agent campaign validate save load policy audit evidence traces memory role pack approve\nREST API on http://127.0.0.1:8443/api/v1"),
+                "help" | "?" => println!("Commands: help list use info set show charter scope run sessions jobs agent campaign validate save load policy audit evidence traces memory role pack approve proxy tier\nREST API on http://127.0.0.1:8443/api/v1"),
                 "exit" | "quit" => std::process::exit(0),
                 "list" => cmd_list().await,
                 "use" => cmd_use(a, &mut s, fw),
@@ -327,6 +395,10 @@ async fn cmd_load(a: &[&str], fw: SharedFramework) {
 }
 
 async fn cmd_agent(a: &[&str], fw: SharedFramework) {
+    if !role_allows(fw.lock().await.operator_role, Role::Operator) {
+        println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
+        return;
+    }
     if a.first().copied() != Some("run") {
         println!("usage: agent run [--model <name>] <target>");
         return;
@@ -361,6 +433,10 @@ async fn cmd_agent(a: &[&str], fw: SharedFramework) {
 }
 
 async fn cmd_campaign(a: &[&str], fw: SharedFramework) {
+    if !role_allows(fw.lock().await.operator_role, Role::Operator) {
+        println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
+        return;
+    }
     let approved = a.last().copied() == Some("approve");
     let targets: Vec<String> = a
         .iter()
@@ -397,6 +473,10 @@ async fn cmd_campaign(a: &[&str], fw: SharedFramework) {
 }
 
 async fn cmd_validate(a: &[&str], fw: SharedFramework) {
+    if !role_allows(fw.lock().await.operator_role, Role::Operator) {
+        println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
+        return;
+    }
     match a.first().copied() {
         Some("diff") => {
             let (pa, pb) = (a.get(1).copied(), a.get(2).copied());
@@ -540,7 +620,12 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
             if let Some(e) = tp.get(1) {
                 engine = match e.to_lowercase().as_str() {
                     "docker" => Some(icebox::core::sandbox::SandboxEngineType::Docker),
-                    "firecracker" => Some(icebox::core::sandbox::SandboxEngineType::Firecracker),
+                    "firecracker" => {
+                        println!(
+                            "{COLOR_ORANGE}Firecracker is not supported for module execution; use docker{COLOR_RESET}"
+                        );
+                        return;
+                    }
                     _ => {
                         println!("unknown engine: {e}");
                         return;
@@ -566,22 +651,22 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
     };
     s.target = Some(target.clone());
 
-    if !sandbox {
-        let pf = fw
-            .executor
-            .preflight(l, &target, None, approved, PolicyContext::Cli);
-        if let Err(e) = pf.check(&fw.executor.policy(PolicyContext::Cli)) {
-            println!("{COLOR_ORANGE}BLOCKED: {e}{COLOR_RESET}");
-            if pf.risk >= RiskLevel::High {
-                println!("try: run --approve {target}");
-            }
-            return;
+    let pf = fw
+        .executor
+        .preflight(l, &target, None, approved, PolicyContext::Cli);
+    if let Err(e) = pf.check(&fw.executor.policy(PolicyContext::Cli)) {
+        println!("{COLOR_ORANGE}BLOCKED: {e}{COLOR_RESET}");
+        if pf.risk >= RiskLevel::High {
+            println!("try: run --approve {target}");
         }
-        println!("preflight passed");
-    } else {
+        return;
+    }
+    if sandbox {
         println!(
-            "{COLOR_TEAL}[SANDBOX] Preflight auto-allowed (isolated environment){COLOR_RESET}"
+            "{COLOR_TEAL}[SANDBOX] isolation enabled - preflight still enforced{COLOR_RESET}"
         );
+    } else {
+        println!("preflight passed");
     }
 
     let job = Job::new(&l.info.name, &target);
@@ -1128,5 +1213,97 @@ async fn cmd_approve(a: &[&str], fw: SharedFramework) {
             }
         }
         _ => println!("usage: approve list | approve request <module> <target> [--reason text] [--set key val]... | approve approve <id> | approve deny <id>"),
+    }
+}
+
+async fn cmd_proxy(a: &[&str], fw: SharedFramework) {
+    match a.first().copied() {
+        Some("bind") => {
+            let Some(target) = a.get(1).map(|s| s.to_string()) else {
+                println!("usage: proxy bind <target> <port>");
+                return;
+            };
+            let Some(port) = a.get(2).and_then(|x| x.parse::<u16>().ok()) else {
+                println!("usage: proxy bind <target> <port>");
+                return;
+            };
+            let mut g = fw.lock().await;
+            if !role_allows(g.operator_role, Role::Operator) {
+                println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
+                return;
+            }
+            use icebox::core::proxy::{bind_proxy as reg_bind, NetworkIsolator, tcp::TcpProxyIsolator};
+            let Ok((listener, handle)) =
+                TcpProxyIsolator.spawn_proxy(&target, port).await
+            else {
+                println!("{COLOR_ORANGE}failed to bind proxy for {target}{COLOR_RESET}");
+                return;
+            };
+            let local = listener.local_addr;
+            reg_bind(&target, local);
+            let lp = local.port();
+            g.proxies.insert(lp, (target.clone(), handle));
+            println!("proxy bound: {target}:{port} -> 127.0.0.1:{lp}");
+        }
+        Some("unbind") => {
+            let Some(port) = a.get(1).and_then(|x| x.parse::<u16>().ok()) else {
+                println!("usage: proxy unbind <local_port>");
+                return;
+            };
+            let mut g = fw.lock().await;
+            if !role_allows(g.operator_role, Role::Operator) {
+                println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
+                return;
+            }
+            if let Some((target, handle)) = g.proxies.remove(&port) {
+                icebox::core::proxy::unbind_proxy(&target);
+                handle.abort();
+                println!("proxy unbound: 127.0.0.1:{port}");
+            } else {
+                println!("no proxy bound on 127.0.0.1:{port}");
+            }
+        }
+        Some("list") => {
+            let g = fw.lock().await;
+            if g.proxies.is_empty() {
+                println!("no proxies bound");
+                return;
+            }
+            for (port, (target, _)) in &g.proxies {
+                println!("  127.0.0.1:{port} -> {target}");
+            }
+        }
+        _ => println!("usage: proxy bind <target> <port> | proxy unbind <local_port> | proxy list"),
+    }
+}
+
+async fn cmd_tier(a: &[&str], fw: SharedFramework) {
+    use icebox::core::safety::Tier;
+    match a.first().copied() {
+        Some("set") => {
+            let Some(name) = a.get(1) else {
+                println!("usage: tier set <fridge|freezer|deep_freeze>");
+                return;
+            };
+            let Ok(tier) = name.parse::<Tier>() else {
+                println!("{COLOR_ORANGE}unknown tier: {name}{COLOR_RESET}");
+                return;
+            };
+            let mut g = fw.lock().await;
+            g.executor.tier = tier;
+            println!("operational tier set: {tier}");
+            println!(
+                "  sandbox: {} | cvss limit: {} | explicit approval: {}",
+                tier.requires_sandbox(),
+                tier.cvss_threshold()
+                    .map(|t| format!("{t:.1}"))
+                    .unwrap_or_else(|| "none".into()),
+                tier.requires_explicit_approval(),
+            );
+        }
+        _ => {
+            let g = fw.lock().await;
+            println!("operational tier: {}", g.executor.tier);
+        }
     }
 }

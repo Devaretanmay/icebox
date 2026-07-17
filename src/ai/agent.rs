@@ -623,6 +623,18 @@ impl Agent {
                 PolicyContext::Autonomous,
                 &fw.executor.policy_set,
             );
+            let cvss = fw
+                .executor
+                .recent_evidence(2000)
+                .iter()
+                .filter_map(|e| e.cvss())
+                .max_by(|a, b| {
+                    a.weighted_risk()
+                        .partial_cmp(&b.weighted_risk())
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+            let mut pf = pf;
+            pf.cvss = cvss;
             if let Err(e) = pf.check(&policy) {
                 self.logs.push(format!("execute: preflight blocked: {e}"));
                 continue;

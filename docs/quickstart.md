@@ -56,12 +56,12 @@ You can interact with the engine using standard HTTP requests:
 
 ```bash
 # Accept a charter
-curl -X POST http://127.0.0.1:8443/api/v1/charter/accept \
+curl -X POST http://127.0.0.1:8443/api/v1/charter \
   -H "Content-Type: application/json" \
   -d '{"engagement":"rest-audit","rules_of_engagement":[]}'
 
 # Set the scope
-curl -X POST http://127.0.0.1:8443/api/v1/scope/add \
+curl -X POST http://127.0.0.1:8443/api/v1/scope \
   -H "Content-Type: application/json" \
   -d '{"target":"127.0.0.1"}'
 
@@ -100,11 +100,11 @@ except Exception as e:
 
 ## 4. Using the Rust SDK
 
-If you are building high-performance tooling natively in Rust, you can import the `icebox-gov` crate and interact directly with the `ModuleExecutor`.
+If you are building high-performance tooling natively in Rust, you can import the `icebox` crate and interact directly with the `ModuleExecutor`.
 
 ```rust
-use icebox_gov::core::governance::{Framework, PolicyContext};
-use icebox_gov::core::module::load;
+use icebox::core::governance::{Framework, PolicyContext};
+use icebox::core::module::load;
 
 #[tokio::main]
 async fn main() {

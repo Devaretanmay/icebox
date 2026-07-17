@@ -1,17 +1,29 @@
-use std::net::SocketAddr;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 use tracing::{info, warn};
 
+use super::{NetworkIsolator, ProxyListener};
 use crate::modules::hex_encode;
+use std::net::SocketAddr;
 
-pub struct ProxyListener {
-    pub local_addr: SocketAddr,
-    pub target_addr: SocketAddr,
-}
+pub struct TcpProxyIsolator;
 
-impl ProxyListener {
-    pub async fn spawn(target_ip: &str, target_port: u16) -> anyhow::Result<Self> {
+#[async_trait::async_trait]
+impl NetworkIsolator for TcpProxyIsolator {
+    async fn setup(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn teardown(&self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn spawn_proxy(
+        &self,
+        target_ip: &str,
+        target_port: u16,
+    ) -> anyhow::Result<(ProxyListener, tokio::task::JoinHandle<()>)> {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let local_addr = listener.local_addr()?;
         let target_str = format!("{}:{}", target_ip, target_port);
@@ -20,7 +32,7 @@ impl ProxyListener {
             .next()
             .ok_or_else(|| anyhow::anyhow!("could not resolve hostname: {}", target_ip))?;
 
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             if let Ok((mut client_stream, _client_addr)) = listener.accept().await {
                 info!("Proxy accepted connection for {}", target_addr);
                 match tokio::time::timeout(
@@ -84,9 +96,6 @@ impl ProxyListener {
             }
         });
 
-        Ok(Self {
-            local_addr,
-            target_addr,
-        })
+        Ok((ProxyListener { local_addr, target_addr }, handle))
     }
 }

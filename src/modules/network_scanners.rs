@@ -49,8 +49,7 @@ fn parse_target_list(spec: &str) -> Result<Vec<String>, ModuleError> {
                     ips.push(ip.to_string());
                 }
             }
-        } else if part.contains('-') {
-            let (lo, hi) = part.split_once('-').unwrap();
+        } else if let Some((lo, hi)) = part.split_once('-') {
             let base_parts: Vec<&str> = lo.split('.').collect();
             if base_parts.len() != 4 {
                 return Err(ModuleError::Parse("bad IP range format".into()));
@@ -322,7 +321,7 @@ impl Module for SmbScanner {
         } else {
             std::time::Duration::from_secs(5)
         };
-        let addr = format!("{}:{}", self.host, port);
+        let addr = crate::core::proxy::resolve_dial(&self.host, port);
 
         let stream =
             match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await {
@@ -367,14 +366,14 @@ impl Module for SmbScanner {
         }
 
         let null_session = if self.check_null_session {
-            let tcon_req = build_smb_treeconnect("\\\\10.0.0.1\\IPC$", 0);
+            let tcon_req = build_smb_treeconnect(&format!("\\\\{}\\IPC$", self.host), 0);
             let _ = stream.try_write(&tcon_req);
             let mut buf2 = vec![0u8; 1024];
             let n2 = match tokio::time::timeout(timeout, stream.readable()).await {
                 Ok(Ok(_)) => stream.try_read(&mut buf2).unwrap_or(0),
                 _ => 0,
             };
-            if n2 >= 36 && buf2[9..13] == [0x00, 0x00, 0x00, 0x00] {
+            if n2 >= 36 && buf2[5..9] == [0x00, 0x00, 0x00, 0x00] {
                 findings.push("NULL session: IPC$ accessible (likely vulnerable)".into());
                 evidence.push("smb/null_session/ipc".into());
                 true
@@ -490,7 +489,7 @@ impl Module for FtpScanner {
         } else {
             5000
         });
-        let addr = format!("{}:{}", self.host, port);
+        let addr = crate::core::proxy::resolve_dial(&self.host, port);
 
         let stream =
             match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await {
@@ -653,7 +652,7 @@ impl Module for SshScanner {
         } else {
             5000
         });
-        let addr = format!("{}:{}", self.host, port);
+        let addr = crate::core::proxy::resolve_dial(&self.host, port);
 
         let stream =
             match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await {
@@ -1038,7 +1037,7 @@ impl Module for FtpBruteforce {
             pass: &str,
             timeout: std::time::Duration,
         ) -> Option<(String, String)> {
-            let addr = format!("{host}:{port}");
+            let addr = crate::core::proxy::resolve_dial(&host, port);
             let stream = tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr))
                 .await
                 .ok()?
@@ -1227,7 +1226,7 @@ impl Module for RdpScanner {
             5000
         };
         let timeout = std::time::Duration::from_millis(timeout_ms);
-        let addr = format!("{}:{}", self.host, port);
+        let addr = crate::core::proxy::resolve_dial(&self.host, port);
 
         let stream =
             match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await {
@@ -1351,7 +1350,7 @@ impl Module for VncScanner {
             5000
         };
         let timeout = std::time::Duration::from_millis(timeout_ms);
-        let addr = format!("{}:{}", self.host, port);
+        let addr = crate::core::proxy::resolve_dial(&self.host, port);
 
         let stream =
             match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await {
@@ -1427,17 +1426,15 @@ impl Module for VncScanner {
                         findings.push("No authentication required!".into());
                         evidence.push("vnc/no_auth".into());
                     }
-                } else if sec_count == 0 {
-                    if n2 >= 4 {
-                        let auth_type = u32::from_le_bytes([buf[1], buf[2], buf[3], buf[4]]);
-                        let name = match auth_type {
-                            1 => "None",
-                            2 => "VNC Auth",
-                            _ => "unknown",
-                        };
-                        findings.push(format!("auth: {name} (0x{auth_type:x})"));
-                        evidence.push(format!("vnc/auth:0x{auth_type:x}"));
-                    }
+                } else if sec_count == 0 && n2 >= 4 {
+                    let auth_type = u32::from_le_bytes([buf[1], buf[2], buf[3], buf[4]]);
+                    let name = match auth_type {
+                        1 => "None",
+                        2 => "VNC Auth",
+                        _ => "unknown",
+                    };
+                    findings.push(format!("auth: {name} (0x{auth_type:x})"));
+                    evidence.push(format!("vnc/auth:0x{auth_type:x}"));
                 }
             }
         } else {
@@ -1552,7 +1549,7 @@ impl Module for TelnetScanner {
             5000
         };
         let timeout = std::time::Duration::from_millis(timeout_ms);
-        let addr = format!("{}:{}", self.host, port);
+        let addr = crate::core::proxy::resolve_dial(&self.host, port);
 
         let stream =
             match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await {
@@ -1740,7 +1737,7 @@ impl Module for RedisScanner {
             5000
         };
         let timeout = std::time::Duration::from_millis(timeout_ms);
-        let addr = format!("{}:{}", self.host, port);
+        let addr = crate::core::proxy::resolve_dial(&self.host, port);
 
         let stream =
             match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await {

@@ -1,6 +1,6 @@
 [package]
 name = "icebox-gov"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 authors = ["Tanmay Devare <contact@tanmaydevare.com>"]
 license = "MIT"
@@ -38,15 +38,19 @@ base64 = "0.22"
 axum = "0.8"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors"] }
-icebox-macro = { path = "crates/icebox-macro", version = "0.2.0" }
+icebox-macro = { path = "crates/icebox-macro", version = "0.2.3" }
 bollard = "0.21"
 futures-util = "0.3"
+hyper = { version = "1.0", features = ["full"] }
+hyperlocal = "0.9"
+hyper-util = "0.1"
+http-body-util = "0.1"
 
 [workspace]
-members = ["crates/icebox-macro"]
+members = ["crates/icebox-macro", "crates/icebox-py", "xtask"]
 
 [workspace.package]
-version = "0.2.1"
+version = "0.2.3"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/Devaretanmay/icebox"

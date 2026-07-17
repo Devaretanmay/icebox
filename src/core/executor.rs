@@ -3,8 +3,8 @@ use tracing::info;
 use crate::core::module::{LoadedModule, ModuleError, ModuleResult};
 use crate::core::safety::{
     is_destructive, make_config_policy, now_secs, Charter, ConfigPolicy, DecisionRecord, Evidence,
-    MemoryEntry, MemoryKind, PolicyContext, PolicyEngine, PolicySet, Preflight, PreflightError,
-    ReasoningTrace, RiskLevel, ScopeManager,
+    MemoryEntry, MemoryKind, PolicyContext, PolicyDecision, PolicyEngine, PolicySet, Preflight,
+    PreflightError, ReasoningTrace, RiskLevel, ScopeManager,
 };
 
 const MAX_DECISIONS: usize = 1000;
@@ -26,6 +26,8 @@ pub struct ModuleExecutor {
     pub scope: ScopeManager,
     pub max_risk: RiskLevel,
     pub policy_set: PolicySet,
+    pub sandbox_required: bool,
+    pub tier: crate::core::safety::Tier,
     pub decisions: Vec<DecisionRecord>,
     pub evidence: Vec<Evidence>,
     pub traces: Vec<ReasoningTrace>,
@@ -39,6 +41,8 @@ impl ModuleExecutor {
             scope,
             max_risk,
             policy_set: PolicySet::default(),
+            sandbox_required: false,
+            tier: crate::core::safety::Tier::Fridge,
             decisions: Vec::new(),
             evidence: Vec::new(),
             traces: Vec::new(),
@@ -47,7 +51,11 @@ impl ModuleExecutor {
     }
 
     pub fn policy(&self, context: PolicyContext) -> ConfigPolicy {
-        make_config_policy(self.max_risk, context, &self.policy_set)
+        let mut policy = make_config_policy(self.max_risk, context, &self.policy_set);
+        if let Some(thr) = self.tier.cvss_threshold() {
+            policy.rules.add_rule(crate::core::safety::PolicyRule::DenyIfCvssAbove(thr));
+        }
+        policy
     }
 
     pub fn recent_traces(&self, n: usize) -> Vec<ReasoningTrace> {
@@ -126,6 +134,7 @@ impl ModuleExecutor {
             capabilities: loaded.info.capabilities.clone(),
             intents: loaded.info.effective_intents(),
             context,
+            cvss: None,
         }
     }
 
@@ -143,15 +152,26 @@ impl ModuleExecutor {
     ) -> Result<ModuleResult, ExecutorError> {
         let pf = self.preflight(loaded, target, destructive_override, approved, context);
         let policy = self.policy(context);
-        let decision = if sandbox {
-            crate::core::safety::PolicyDecision::Allow
-        } else {
-            policy.evaluate(&pf.to_request())
-        };
+        let decision = policy.evaluate(&pf.to_request());
         self.record_decision(&loaded.info.name, &pf, &decision);
-        if !sandbox {
-            pf.check(&policy)?;
+        pf.check(&policy)?;
+
+        if (self.sandbox_required || self.tier.requires_sandbox()) && !sandbox {
+            let reason = format!("operational tier {} requires sandbox isolation", self.tier);
+            self.record_decision(&loaded.info.name, &pf, &PolicyDecision::Deny(reason.clone()));
+            return Err(ExecutorError::Preflight(PreflightError::Denied(reason)));
         }
+
+        if self.tier.requires_explicit_approval() && !approved {
+            let reason = format!("operational tier {} requires explicit operator approval", self.tier);
+            self.record_decision(
+                &loaded.info.name,
+                &pf,
+                &PolicyDecision::RequireApproval(reason.clone()),
+            );
+            return Err(ExecutorError::Preflight(PreflightError::ApprovalRequired));
+        }
+
         info!(
             target = %target,
             module = %loaded.info.name,
@@ -165,11 +185,36 @@ impl ModuleExecutor {
                 loaded,
                 target,
                 engine.unwrap_or(crate::core::sandbox::SandboxEngineType::Docker),
+                context,
             )
             .await
         } else {
-            loaded.module.run().await?
+            match loaded.module.run().await {
+                Ok(r) => r,
+                Err(e) => {
+                    let reason = format!("module execution failed: {e}");
+                    self.record_decision(
+                        &loaded.info.name,
+                        &pf,
+                        &PolicyDecision::Deny(reason.clone()),
+                    );
+                    return Err(ExecutorError::Module(e));
+                }
+            }
         };
+
+        let denied = policy.denied_payload(&result);
+        if !denied.is_empty() {
+            let reason = format!("payload matched denied pattern: {denied}");
+            self.record_decision(&loaded.info.name, &pf, &PolicyDecision::Deny(reason.clone()));
+            let mut blocked = result;
+            blocked.success = false;
+            blocked.evidence.push(format!("[BLOCKED:payload] {denied}"));
+            blocked.data = serde_json::Value::Null;
+            self.record_evidence(&loaded.info.name, target, &blocked, job_id);
+            return Ok(blocked);
+        }
+
         self.record_evidence(&loaded.info.name, target, &result, job_id);
         Ok(result)
     }
@@ -219,76 +264,32 @@ impl ModuleExecutor {
         }
     }
     async fn run_sandboxed(
-        &self,
+        &mut self,
         loaded: &crate::core::module::LoadedModule,
         target: &str,
         engine: crate::core::sandbox::SandboxEngineType,
+        context: PolicyContext,
     ) -> ModuleResult {
         use crate::core::sandbox::Sandbox;
-        let mut image = loaded
-            .info
-            .sandbox_image
-            .as_deref()
-            .unwrap_or("alpine:3.20")
-            .to_string();
-
-        if target.starts_with("target:") {
-            let parts: Vec<&str> = target.split(':').collect();
-            if parts.len() == 3 {
-                image = format!("{}:{}", parts[1], parts[2]);
-            }
-        }
-
+        let image = "icebox-sandbox:latest".to_string();
+        let module_name = loaded.info.name.clone();
         match Sandbox::freeze(engine, target, &image).await {
             Ok(sandbox) => {
                 info!(
                     container = %sandbox.container_id(),
-                    "[SANDBOX] Docker container frozen"
+                    "[SANDBOX] container frozen"
                 );
-
-                let mut result = match sandbox.ip_address().await {
-                    Ok(ip) => {
-                        let mut new_mod =
-                            crate::modules::load(&loaded.info.name).expect("module load failed");
-                        let mut target_port = 80;
-                        if let Some(opts) = loaded.module.options_json().as_object() {
-                            for (k, v) in opts {
-                                if let Some(s) = v.as_str() {
-                                    new_mod.module.set_option(k, s).ok();
-                                } else if let Some(n) = v.as_u64() {
-                                    new_mod.module.set_option(k, &n.to_string()).ok();
-                                } else if let Some(b) = v.as_bool() {
-                                    new_mod.module.set_option(k, &b.to_string()).ok();
-                                }
-                            }
-                            if let Some(p) = opts.get("port") {
-                                target_port = p.as_str().unwrap_or("80").parse().unwrap_or(80);
-                            }
-                        }
-
-                        let proxy = crate::core::proxy::ProxyListener::spawn(&ip, target_port)
-                            .await
-                            .expect("failed to spawn proxy");
-
-                        new_mod
-                            .module
-                            .set_option("host", &proxy.local_addr.ip().to_string())
-                            .ok();
-                        new_mod
-                            .module
-                            .set_option("port", &proxy.local_addr.port().to_string())
-                            .ok();
-                        new_mod.module.run().await.unwrap_or_else(|e| ModuleResult {
-                            error: Some(e.to_string()),
-                            ..Default::default()
-                        })
-                    }
+                let options = loaded.module.options_json();
+                let mut result = match sandbox
+                    .exec_module(&loaded.info.name, target, &options)
+                    .await
+                {
+                    Ok(r) => r,
                     Err(e) => ModuleResult {
-                        error: Some(format!("Failed to get sandbox IP: {e}")),
+                        error: Some(format!("sandbox module exec failed: {e}")),
                         ..Default::default()
                     },
                 };
-
                 let logs = sandbox.capture_logs().await;
                 result.evidence.extend(logs);
                 result.evidence.push(format!(
@@ -300,14 +301,49 @@ impl ModuleExecutor {
                         .evidence
                         .push(format!("[SANDBOX] Teardown warning: {e}"));
                 }
+                if result.error.is_some() {
+                    self.record_failure(
+                        &module_name,
+                        target,
+                        result.error.as_deref().unwrap_or("sandbox failure"),
+                        context,
+                    );
+                }
                 result
             }
-            Err(e) => ModuleResult {
-                error: Some(format!(
+            Err(e) => {
+                let reason = format!(
                     "Sandbox initialization failed: {e}. Isolation is mandatory."
-                )),
-                ..Default::default()
-            },
+                );
+                self.record_failure(&module_name, target, &reason, context);
+                ModuleResult {
+                    error: Some(reason),
+                    ..Default::default()
+                }
+            }
+        }
+    }
+
+    fn record_failure(
+        &mut self,
+        module: &str,
+        target: &str,
+        reason: &str,
+        context: PolicyContext,
+    ) {
+        self.decisions.push(DecisionRecord {
+            at: now_secs(),
+            target: target.to_string(),
+            module: module.to_string(),
+            capabilities: Vec::new(),
+            intents: Vec::new(),
+            impact: RiskLevel::None,
+            context,
+            decision: PolicyDecision::Deny(reason.to_string()),
+        });
+        let overflow = self.decisions.len().saturating_sub(MAX_DECISIONS);
+        if overflow > 0 {
+            self.decisions.drain(..overflow);
         }
     }
 }

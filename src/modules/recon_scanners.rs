@@ -225,7 +225,7 @@ impl Module for MysqlScanner {
         } else {
             5000
         });
-        let addr = format!("{}:{}", self.host, port);
+        let addr = crate::core::proxy::resolve_dial(&self.host, port);
 
         let mut stream =
             match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await {
@@ -577,7 +577,7 @@ impl Module for WebPathScanner {
             let filter_codes = filter_codes.clone();
             handles.push(tokio::spawn(async move {
                 let _permit = permit;
-                let addr = format!("{}:{}", host, port);
+                let addr = crate::core::proxy::resolve_dial(&host, port);
                 let stream = match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await {
                     Ok(Ok(s)) => s,
                     _ => return None,
@@ -1820,7 +1820,7 @@ impl Module for SnmpScanner {
         } else {
             3000
         });
-        let addr = format!("{}:{}", self.host, port);
+        let addr = crate::core::proxy::resolve_dial(&self.host, port);
 
         let communities: Vec<&str> = if self.communities.is_empty() {
             vec![
@@ -2168,7 +2168,7 @@ impl Module for MongoScanner {
             5000
         };
         let timeout = std::time::Duration::from_millis(timeout_ms);
-        let addr = format!("{}:{}", self.host, port);
+        let addr = crate::core::proxy::resolve_dial(&self.host, port);
 
         let stream =
             match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await {
@@ -2315,7 +2315,7 @@ async fn es_http_request(
     path: &str,
     timeout: std::time::Duration,
 ) -> Result<Vec<u8>, ModuleError> {
-    let addr = format!("{host}:{port}");
+    let addr = crate::core::proxy::resolve_dial(&host, port);
     let stream = match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await {
         Ok(Ok(s)) => s,
         Ok(Err(e)) => return Err(ModuleError::Other(format!("connect: {e}"))),
@@ -2561,7 +2561,7 @@ impl Module for PostgresScanner {
             5000
         };
         let timeout = std::time::Duration::from_millis(timeout_ms);
-        let addr = format!("{}:{}", self.host, port);
+        let addr = crate::core::proxy::resolve_dial(&self.host, port);
 
         async fn pg_read_response(
             stream: &tokio::net::TcpStream,
@@ -2638,7 +2638,7 @@ impl Module for PostgresScanner {
                             }
                         }
                     }
-                } else if auth_t == 3 && creds_to_try.len() == 1 {
+                } else if auth_t == 3 {
                     let pass_pkt = format!("p{}\x00", pass);
                     let len = (4 + pass_pkt.len()) as u32;
                     let mut auth_msg = Vec::new();
@@ -2657,7 +2657,7 @@ impl Module for PostgresScanner {
                             found_creds.push((user.to_string(), pass.to_string()));
                         }
                     }
-                } else if auth_t == 5 && creds_to_try.len() == 1 {
+                } else if auth_t == 5 {
                     let salt = &response[9..13];
                     let md5_hash = pg_md5_auth(user, pass, salt);
                     let pass_bytes = md5_hash.as_bytes();
@@ -2824,7 +2824,7 @@ impl Module for SmtpScanner {
             5000
         };
         let timeout = std::time::Duration::from_millis(timeout_ms);
-        let addr = format!("{}:{}", self.host, port);
+        let addr = crate::core::proxy::resolve_dial(&self.host, port);
 
         let stream =
             match tokio::time::timeout(timeout, tokio::net::TcpStream::connect(&addr)).await {

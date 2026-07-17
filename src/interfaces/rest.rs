@@ -1,12 +1,16 @@
 use std::net::SocketAddr;
+use std::path::PathBuf;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
-use axum::extract::{Path, Query, State};
-use axum::http::{header, StatusCode};
+use axum::extract::{Path, Query, Request, State};
+use axum::http::{header, HeaderValue, StatusCode};
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use crate::ai::agent::{Agent, LlmPlanner};
 use crate::ai::Orchestrator;
@@ -36,8 +40,6 @@ struct ModuleDetail {
     description: String,
     author: String,
     options: serde_json::Value,
-    target: Option<String>,
-    in_scope: Option<bool>,
     charter_accepted: bool,
 }
 
@@ -165,7 +167,83 @@ struct SetModePayload {
     mode: String,
 }
 
-pub async fn serve(fw: SharedFramework, addr: SocketAddr) -> anyhow::Result<()> {
+#[derive(Clone)]
+pub struct AuthState {
+    pub token: Option<String>,
+}
+
+fn home_dir() -> PathBuf {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+}
+
+fn random_token() -> String {
+    let mut buf = [0u8; 24];
+    if let Ok(bytes) = std::fs::read("/dev/urandom") {
+        let n = bytes.len().min(buf.len());
+        buf[..n].copy_from_slice(&bytes[..n]);
+    }
+    hex::encode(buf)
+}
+
+pub fn resolve_auth(no_auth: bool, explicit: Option<String>) -> AuthState {
+    if no_auth {
+        return AuthState { token: None };
+    }
+    if let Some(t) = explicit {
+        return AuthState { token: Some(t) };
+    }
+    let path = home_dir().join(".icebox").join("auth.token");
+    if let Ok(t) = std::fs::read_to_string(&path) {
+        let t = t.trim().to_string();
+        if !t.is_empty() {
+            return AuthState { token: Some(t) };
+        }
+    }
+    let t = random_token();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if std::fs::write(&path, &t).is_ok() {
+        #[cfg(unix)]
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
+    AuthState { token: Some(t) }
+}
+
+async fn require_auth(req: Request, next: Next) -> Result<Response, StatusCode> {
+    let token = req.extensions().get::<AuthState>().cloned();
+    if let Some(AuthState { token: Some(expected) }) = token {
+        let ok = req
+            .headers()
+            .get(header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.trim_start_matches("Bearer ") == expected)
+            .unwrap_or(false);
+        if !ok {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+    }
+    Ok(next.run(req).await)
+}
+
+pub async fn serve(
+    fw: SharedFramework,
+    addr: SocketAddr,
+    auth: AuthState,
+) -> anyhow::Result<()> {
+    let auth_layer = middleware::from_fn(move |mut req: Request, next: Next| {
+        let auth = auth.clone();
+        async move {
+            req.extensions_mut().insert(auth);
+            require_auth(req, next).await
+        }
+    });
+    let cors = CorsLayer::new().allow_origin(AllowOrigin::list([
+        HeaderValue::from_static("http://127.0.0.1:8443"),
+        HeaderValue::from_static("http://localhost:8443"),
+    ]));
     let app = Router::new()
         .route("/api/v1/modules", get(list_modules))
         .route("/api/v1/modules/{name}", get(get_module))
@@ -207,7 +285,9 @@ pub async fn serve(fw: SharedFramework, addr: SocketAddr) -> anyhow::Result<()> 
         .route("/api/v1/memory", get(list_memory))
         .route("/api/v1/mode", get(get_mode).post(set_mode))
         .route("/api/v1/proxy/bind", post(bind_proxy))
-        .layer(CorsLayer::permissive())
+        .route("/api/v1/proxy/unbind", post(unbind_proxy))
+        .layer(auth_layer)
+        .layer(cors)
         .with_state(fw);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -262,17 +342,18 @@ async fn get_module(
         description: loaded.info.description.clone(),
         author: loaded.info.author.clone(),
         options: loaded.module.options_json(),
-        target: None,
-        in_scope: None,
         charter_accepted: pf.charter_accepted,
     }))
 }
 
 async fn set_option(
-    State(_fw): State<SharedFramework>,
+    State(fw): State<SharedFramework>,
     Path(name): Path<String>,
     Json(payload): Json<SetPayload>,
 ) -> Json<Result<String, String>> {
+    if !role_allows(fw.lock().await.operator_role, Role::Operator) {
+        return Json(Err("forbidden: operator role required".into()));
+    }
     let Some(mut loaded) = crate::modules::load(&name) else {
         return Json(Err("module not found".into()));
     };
@@ -291,39 +372,44 @@ async fn set_mode(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    fw.executor.policy_set.rules.clear();
+    let mode_rules: Vec<PolicyRule> = match payload.mode.to_lowercase().as_str() {
+        "fridge" => vec![PolicyRule::MaxRisk(RiskLevel::Low)],
+        "freezer" => vec![
+            PolicyRule::MaxRisk(RiskLevel::High),
+            PolicyRule::DenyIfCvssAbove(7.0),
+        ],
+        "deep_freezer" | "deep freezer" | "deep-freezer" => vec![
+            PolicyRule::MaxRisk(RiskLevel::Critical),
+            PolicyRule::RequireApprovalIf {
+                cvss_above: Some(0.0),
+                epss_above: None,
+                kev: false,
+            },
+        ],
+        _ => return Err(StatusCode::BAD_REQUEST),
+    };
 
-    match payload.mode.to_lowercase().as_str() {
-        "fridge" => {
-            fw.executor
-                .policy_set
-                .add_rule(PolicyRule::MaxRisk(RiskLevel::Low));
-            Ok(Json("mode set to fridge".into()))
-        }
-        "freezer" => {
-            fw.executor
-                .policy_set
-                .add_rule(PolicyRule::MaxRisk(RiskLevel::High));
-            fw.executor
-                .policy_set
-                .add_rule(PolicyRule::DenyIfCvssAbove(7.0));
-            Ok(Json("mode set to freezer".into()))
-        }
-        "deep_freezer" | "deep freezer" | "deep-freezer" => {
-            fw.executor
-                .policy_set
-                .add_rule(PolicyRule::MaxRisk(RiskLevel::Critical));
-            fw.executor
-                .policy_set
-                .add_rule(PolicyRule::RequireApprovalIf {
-                    cvss_above: Some(0.0),
-                    epss_above: None,
-                    kev: false,
-                });
-            Ok(Json("mode set to deep_freezer".into()))
-        }
-        _ => Err(StatusCode::BAD_REQUEST),
-    }
+    let kept: Vec<PolicyRule> = fw
+        .executor
+        .policy_set
+        .rules
+        .iter()
+        .filter(|r| {
+            !matches!(
+                r,
+                PolicyRule::MaxRisk(_)
+                    | PolicyRule::DenyIfCvssAbove(_)
+                    | PolicyRule::RequireApprovalIf { .. }
+            )
+        })
+        .cloned()
+        .collect();
+    let mut rules = kept;
+    rules.extend(mode_rules);
+    fw.executor.policy_set.rules = rules;
+    fw.executor.policy_set.version += 1;
+
+    Ok(Json(format!("mode set to {}", payload.mode)))
 }
 
 async fn get_mode(State(fw): State<SharedFramework>) -> Json<serde_json::Value> {
@@ -409,7 +495,18 @@ async fn run_module(
     let engine = if let Some(e) = payload.engine {
         match e.to_lowercase().as_str() {
             "docker" => Some(crate::core::sandbox::SandboxEngineType::Docker),
-            "firecracker" => Some(crate::core::sandbox::SandboxEngineType::Firecracker),
+            "firecracker" => {
+                return Json(RunResponse {
+                    job_id: 0,
+                    session_id: None,
+                    success: false,
+                    data: serde_json::Value::Null,
+                    preflight: None,
+                    error: Some(
+                        "Firecracker is not supported for module execution; use docker".into(),
+                    ),
+                })
+            }
             _ => {
                 return Json(RunResponse {
                     job_id: 0,
@@ -931,8 +1028,6 @@ async fn list_memory(State(fw): State<SharedFramework>) -> Json<Vec<MemoryEntry>
 struct ProxyBindPayload {
     target: String,
     port: u16,
-    #[serde(default)]
-    sandbox: bool,
 }
 
 #[derive(Serialize)]
@@ -946,7 +1041,7 @@ async fn bind_proxy(
     State(fw): State<SharedFramework>,
     Json(payload): Json<ProxyBindPayload>,
 ) -> Json<ProxyBindResponse> {
-    let fw = fw.lock().await;
+    let mut fw = fw.lock().await;
     if !role_allows(fw.operator_role, Role::Operator) {
         return Json(ProxyBindResponse {
             local_port: 0,
@@ -983,7 +1078,7 @@ async fn bind_proxy(
         &proxy_module,
         &payload.target,
         None,
-        true,
+        false,
         PolicyContext::Rest,
     );
     let policy = fw.executor.policy(PolicyContext::Rest);
@@ -997,16 +1092,53 @@ async fn bind_proxy(
         });
     }
 
-    match crate::core::proxy::ProxyListener::spawn(&payload.target, payload.port).await {
-        Ok(listener) => Json(ProxyBindResponse {
-            local_port: listener.local_addr.port(),
-            preflight: Some(report),
-            error: None,
-        }),
+    use crate::core::proxy::{NetworkIsolator, tcp::TcpProxyIsolator};
+    let isolator = TcpProxyIsolator;
+    let proxy = isolator.spawn_proxy(&payload.target, payload.port).await;
+    match proxy {
+        Ok((listener, handle)) => {
+            let port = listener.local_addr.port();
+            crate::core::proxy::bind_proxy(&payload.target, listener.local_addr);
+            fw.proxies.insert(port, (payload.target.clone(), handle));
+            Json(ProxyBindResponse {
+                local_port: port,
+                preflight: Some(report),
+                error: None,
+            })
+        }
         Err(e) => Json(ProxyBindResponse {
             local_port: 0,
             preflight: Some(report),
             error: Some(format!("Failed to bind proxy: {e}")),
         }),
     }
+}
+
+#[derive(Deserialize)]
+struct ProxyUnbindPayload {
+    local_port: u16,
+}
+
+#[derive(Serialize)]
+struct ProxyUnbindResponse {
+    ok: bool,
+    error: Option<String>,
+}
+
+async fn unbind_proxy(
+    State(fw): State<SharedFramework>,
+    Json(payload): Json<ProxyUnbindPayload>,
+) -> Json<ProxyUnbindResponse> {
+    let mut fw = fw.lock().await;
+    if !role_allows(fw.operator_role, Role::Operator) {
+        return Json(ProxyUnbindResponse {
+            ok: false,
+            error: Some("forbidden: operator role required".into()),
+        });
+    }
+    if let Some((target, handle)) = fw.proxies.remove(&payload.local_port) {
+        crate::core::proxy::unbind_proxy(&target);
+        handle.abort();
+    }
+    Json(ProxyUnbindResponse { ok: true, error: None })
 }

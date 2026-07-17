@@ -23,7 +23,7 @@ Operators explicitly define what network boundaries, domains, or directories the
 **The Problem it Solves:** Preventing tools from scanning unauthorized networks (e.g., scanning `10.0.0.5` when only `127.0.0.1` is authorized).
 **How to use it:** 
 - CLI: `scope add 127.0.0.1`
-- REST: `POST /api/v1/scope/add {"target": "127.0.0.1"}`
+- REST: `POST /api/v1/scope {"target": "127.0.0.1"}`
 
 ### 4. Charters and Rules of Engagement
 Every engagement requires an explicit "Charter" to be accepted before any tool can fire, which can enforce specific Rules of Engagement.

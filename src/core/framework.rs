@@ -14,6 +14,7 @@ pub struct Framework {
     pub operator_role: Role,
     pub policy_packs: PolicyPackStore,
     pub approval_queue: ApprovalQueue,
+    pub proxies: std::collections::HashMap<u16, (String, tokio::task::JoinHandle<()>)>,
 }
 
 impl Framework {
@@ -25,6 +26,7 @@ impl Framework {
             operator_role: Role::Admin,
             policy_packs: PolicyPackStore::new(),
             approval_queue: ApprovalQueue::default(),
+            proxies: std::collections::HashMap::new(),
         }
     }
 }

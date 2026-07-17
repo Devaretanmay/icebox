@@ -6,7 +6,7 @@ use std::net::{Ipv4Addr, Ipv6Addr, ToSocketAddrs};
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::core::module::{Capability, Intent, ModuleKind};
+use crate::core::module::{Capability, Intent, ModuleKind, ModuleResult};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -17,6 +17,58 @@ pub enum RiskLevel {
     Medium = 2,
     High = 3,
     Critical = 4,
+}
+
+/// Operational governance tiers. Each tier maps to concrete policy behavior:
+/// sandbox containment, a CVSS deny threshold, and explicit-approval gating.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum Tier {
+    #[default]
+    Fridge,
+    Freezer,
+    DeepFreeze,
+}
+
+impl Tier {
+    pub fn requires_sandbox(&self) -> bool {
+        matches!(self, Tier::Freezer | Tier::DeepFreeze)
+    }
+    pub fn requires_explicit_approval(&self) -> bool {
+        matches!(self, Tier::DeepFreeze)
+    }
+    pub fn cvss_threshold(&self) -> Option<f64> {
+        match self {
+            Tier::Fridge => None,
+            Tier::Freezer => Some(7.0),
+            Tier::DeepFreeze => Some(4.0),
+        }
+    }
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Tier::Fridge => "fridge",
+            Tier::Freezer => "freezer",
+            Tier::DeepFreeze => "deep_freeze",
+        }
+    }
+}
+
+impl std::fmt::Display for Tier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for Tier {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "fridge" | "the fridge" => Ok(Tier::Fridge),
+            "freezer" | "the freezer" => Ok(Tier::Freezer),
+            "deep_freeze" | "deepfreeze" | "the deep freezer" => Ok(Tier::DeepFreeze),
+            _ => Err(format!("unknown tier: {s}")),
+        }
+    }
 }
 
 impl RiskLevel {
@@ -402,6 +454,7 @@ pub struct Preflight {
     pub capabilities: Vec<Capability>,
     pub intents: Vec<Intent>,
     pub context: PolicyContext,
+    pub cvss: Option<CvssScore>,
 }
 
 #[derive(Debug, thiserror::Error, PartialEq)]
@@ -423,7 +476,7 @@ impl Preflight {
             in_scope: self.in_scope,
             approved: self.approved,
             context: self.context,
-            cvss: None,
+            cvss: self.cvss.clone(),
         }
     }
 
@@ -627,6 +680,28 @@ impl PolicyEngine for ConfigPolicy {
             d = PolicyDecision::Allow;
         }
         d
+    }
+}
+
+impl ConfigPolicy {
+    /// Returns the first denied payload pattern found in a module's emitted
+    /// evidence or structured data, or an empty string when none match.
+    /// Used to enforce the (otherwise inert) `DenyPayload` rule post-execution.
+    pub fn denied_payload(&self, result: &ModuleResult) -> String {
+        let mut haystack = String::new();
+        for e in &result.evidence {
+            haystack.push_str(e);
+            haystack.push('\n');
+        }
+        haystack.push_str(&result.data.to_string());
+        for r in &self.rules.rules {
+            if let PolicyRule::DenyPayload(p) = r {
+                if haystack.contains(p) {
+                    return p.clone();
+                }
+            }
+        }
+        String::new()
     }
 }
 
@@ -876,4 +951,64 @@ pub fn now_secs() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn deny_payload_is_enforced_on_evidence() {
+        let mut rules = PolicySet::default();
+        rules.add_rule(PolicyRule::DenyPayload("reverse_shell".into()));
+        let policy = ConfigPolicy {
+            max_risk: RiskLevel::Critical,
+            context: PolicyContext::Cli,
+            rules,
+        };
+        let result = ModuleResult {
+            success: true,
+            evidence: vec!["payload/reverse_shell generated".into()],
+            data: json!({}),
+            ..Default::default()
+        };
+        assert_eq!(policy.denied_payload(&result), "reverse_shell");
+    }
+
+    #[test]
+    fn deny_payload_is_enforced_on_data() {
+        let mut rules = PolicySet::default();
+        rules.add_rule(PolicyRule::DenyPayload("AKIA".into()));
+        let policy = ConfigPolicy {
+            max_risk: RiskLevel::Critical,
+            context: PolicyContext::Cli,
+            rules,
+        };
+        let result = ModuleResult {
+            success: true,
+            evidence: vec![],
+            data: json!({"leak": "AKIAEXAMPLEKEY"}),
+            ..Default::default()
+        };
+        assert_eq!(policy.denied_payload(&result), "AKIA");
+    }
+
+    #[test]
+    fn deny_payload_passes_when_no_match() {
+        let mut rules = PolicySet::default();
+        rules.add_rule(PolicyRule::DenyPayload("forbidden".into()));
+        let policy = ConfigPolicy {
+            max_risk: RiskLevel::Critical,
+            context: PolicyContext::Cli,
+            rules,
+        };
+        let result = ModuleResult {
+            success: true,
+            evidence: vec!["benign finding".into()],
+            data: json!({}),
+            ..Default::default()
+        };
+        assert_eq!(policy.denied_payload(&result), "");
+    }
 }

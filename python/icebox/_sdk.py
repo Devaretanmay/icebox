@@ -4,6 +4,7 @@ Talks directly to the ICEBOX REST API — no native build required.
 """
 
 import json
+import os
 import urllib.error
 import urllib.request
 from typing import Any
@@ -16,15 +17,30 @@ class IceboxError(Exception):
 class IceboxClient:
     """High-level client for the ICEBOX REST API."""
 
-    def __init__(self, url: str = "http://127.0.0.1:8443"):
+    def __init__(self, url: str = "http://127.0.0.1:8443", token: str | None = None):
         self._base = url.rstrip("/")
+        self._token = token or self._load_token()
+
+    def _load_token(self) -> str | None:
+        try:
+            with open(os.path.expanduser("~/.icebox/auth.token")) as fh:
+                return fh.read().strip() or None
+        except OSError:
+            return None
+
+    def _headers(self) -> dict:
+        headers = {"Content-Type": "application/json"}
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        return headers
 
     def _get(self, path: str, params: dict | None = None) -> Any:
         url = self._base + path
         if params:
             query = "&".join(f"{k}={v}" for k, v in params.items())
             url = f"{url}?{query}"
-        with urllib.request.urlopen(url, timeout=10) as r:
+        req = urllib.request.Request(url, headers=self._headers())
+        with urllib.request.urlopen(req, timeout=10) as r:
             return json.loads(r.read())
 
     def _post(self, path: str, body: Any = None) -> Any:
@@ -32,7 +48,7 @@ class IceboxClient:
         req = urllib.request.Request(
             self._base + path,
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers=self._headers(),
             method="POST",
         )
         try:
@@ -89,11 +105,15 @@ class IceboxClient:
     def audit(self, n: int = 20) -> list[dict]:
         return self._get("/api/v1/audit", {"n": n})
 
-    def bind_proxy(self, target: str, port: int, sandbox: bool = False) -> dict:
+    def bind_proxy(self, target: str, port: int) -> dict:
         return self._post("/api/v1/proxy/bind", {
             "target": target,
             "port": port,
-            "sandbox": sandbox,
+        })
+
+    def unbind_proxy(self, local_port: int) -> dict:
+        return self._post("/api/v1/proxy/unbind", {
+            "local_port": local_port,
         })
 
     def get_openai_tools(self) -> list[dict]:
@@ -154,17 +174,29 @@ class IceboxClient:
 
 
 class Governance:
-    """Backward-compatible shim — now backed by HTTP instead of ctypes."""
+    """Natively backed by PyO3 Rust extension."""
 
     def __init__(self, config: dict):
-        url = config.get("url", "http://127.0.0.1:8443")
-        self._client = IceboxClient(url)
+        try:
+            import _icebox
+            self._native = _icebox.NativeIcebox()
+        except ImportError:
+            self._native = None
+            url = config.get("url", "http://127.0.0.1:8443")
+            self._client = IceboxClient(url)
 
     def check(self, task: dict) -> dict:
         name = task.get("module", "")
         target = task.get("target", "")
+        sandbox = task.get("sandbox", False)
+        
+        if self._native:
+            import json
+            raw_json = self._native.run_module(name, target, sandbox)
+            return json.loads(raw_json)
+        
         try:
-            return self._client.run_module(name, target)
+            return self._client.run_module(name, target, sandbox=sandbox)
         except Exception as e:
             return {"error": str(e)}
 
@@ -192,10 +224,16 @@ class Governance:
         return self._client.audit()
 
     def audit_csv(self) -> str:
+        if not self._client:
+            return ""
         try:
-            raw = urllib.request.urlopen(
-                self._client._base + "/api/v1/audit/export", timeout=10
-            ).read()
-            return raw.decode()
+            req = urllib.request.Request(
+                self._client._base + "/api/v1/audit/export?format=csv",
+                headers=self._client._headers(),
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.read().decode()
+        except urllib.error.HTTPError as e:
+            raise IceboxError(f"HTTP {e.code}: {e.read().decode()}") from e
         except Exception:
             return ""

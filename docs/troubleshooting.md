@@ -8,14 +8,14 @@ If ICEBOX is blocking your execution, it means the Governance Seam is doing its 
 **The Problem:** ICEBOX strictly forbids any module execution until a legal or operational charter has been explicitly accepted for the session.
 **The Solution:**
 - **CLI**: Run `charter accept --engagement my-audit`
-- **REST**: Send a POST to `/api/v1/charter/accept` with `{"engagement": "my-audit", "rules_of_engagement": []}`
+- **REST**: Send a POST to `/api/v1/charter` with `{"engagement": "my-audit", "rules_of_engagement": []}`
 - **Python**: Pass `"charter": {"accepted": True, "engagement": "my-audit"}` in the `Governance` initialization dictionary.
 
 ### "target out of scope: 10.0.0.5"
 **The Problem:** You tried to scan or exploit a target that has not been explicitly allow-listed in the current scope.
 **The Solution:**
 - **CLI**: Run `scope add 10.0.0.5` or `scope add 10.0.0.0/24`
-- **REST**: Send a POST to `/api/v1/scope/add` with `{"target": "10.0.0.5"}`
+- **REST**: Send a POST to `/api/v1/scope` with `{"target": "10.0.0.5"}`
 - **Python**: Ensure your `allow` array in the `scope` dictionary includes the target.
 
 ### "risk level high exceeds maximum allowed low"

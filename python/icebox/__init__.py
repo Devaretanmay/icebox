@@ -48,8 +48,7 @@ class Workspace:
         try:
             yield local_port
         finally:
-            # We would tear down the proxy here if the API supported it
-            pass
+            self.client.unbind_proxy(local_port)
 
 __all__ = ["Governance", "IceboxClient", "IceboxError", "Workspace"]
-__version__ = "0.2.2"
+__version__ = "0.2.3"

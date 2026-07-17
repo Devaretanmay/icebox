@@ -15,15 +15,15 @@ fn runtime(handle: *mut c_void) -> Option<&'static GovernanceRuntime> {
 
 fn to_cstring(s: String) -> *mut c_char {
     CString::new(s)
-        .unwrap_or_else(|_| CString::new("").unwrap())
+        .unwrap_or_else(|_| CString::new("<invalid>").unwrap())
         .into_raw()
 }
 
-fn tokio_rt() -> tokio::runtime::Runtime {
+fn tokio_rt() -> Option<tokio::runtime::Runtime> {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .expect("tokio runtime")
+        .ok()
 }
 
 #[no_mangle]
@@ -68,69 +68,80 @@ unsafe fn check_task(handle: *mut c_void, task_json: *const c_char, auto: bool) 
         Ok(t) => t,
         Err(e) => return to_cstring(json!({"error": e.to_string()}).to_string()),
     };
-    let rt = tokio_rt();
+    let Some(rt) = tokio_rt() else {
+        return to_cstring(json!({"error": "failed to create tokio runtime"}).to_string());
+    };
+    let name = task.name.clone();
+    let target = task.target.clone();
+    let options = task.options.clone();
+    let action = move || {
+        let name = name.clone();
+        let target = target.clone();
+        let options = options.clone();
+        async move {
+            match gov.execute_module(&name, &target, &options).await {
+                Ok(s) => Ok(serde_json::Value::String(s)),
+                Err(e) => Err(e),
+            }
+        }
+    };
     let outcome = if auto {
-        rt.block_on(gov.run(task, || async { Ok(json!(null)) }))
+        rt.block_on(gov.run(task, action))
     } else {
-        rt.block_on(gov.execute(task, || async { Ok(json!(null)) }))
+        rt.block_on(gov.execute(task, action))
     };
     to_cstring(serde_json::to_string(&outcome).unwrap_or_else(|_| "{}".into()))
 }
 
 #[no_mangle]
 pub extern "C" fn icebox_approve(handle: *mut c_void, id: u64) -> bool {
-    match runtime(handle) {
-        Some(gov) => {
-            let rt = tokio_rt();
-            rt.block_on(gov.approve(id))
-        }
-        None => false,
-    }
+    let gov = match runtime(handle) {
+        Some(g) => g,
+        None => return false,
+    };
+    let Some(rt) = tokio_rt() else { return false };
+    rt.block_on(gov.approve(id))
 }
 
 #[no_mangle]
 pub extern "C" fn icebox_deny(handle: *mut c_void, id: u64) -> bool {
-    match runtime(handle) {
-        Some(gov) => {
-            let rt = tokio_rt();
-            rt.block_on(gov.deny(id))
-        }
-        None => false,
-    }
+    let gov = match runtime(handle) {
+        Some(g) => g,
+        None => return false,
+    };
+    let Some(rt) = tokio_rt() else { return false };
+    rt.block_on(gov.deny(id))
 }
 
 #[no_mangle]
 pub extern "C" fn icebox_pending(handle: *mut c_void) -> *mut c_char {
-    match runtime(handle) {
-        Some(gov) => {
-            let rt = tokio_rt();
-            let pending = rt.block_on(gov.pending_approvals());
-            to_cstring(serde_json::to_string(&pending).unwrap_or_else(|_| "[]".into()))
-        }
-        None => to_cstring("[]".into()),
-    }
+    let gov = match runtime(handle) {
+        Some(g) => g,
+        None => return to_cstring("[]".into()),
+    };
+    let Some(rt) = tokio_rt() else { return to_cstring("[]".into()) };
+    let pending = rt.block_on(gov.pending_approvals());
+    to_cstring(serde_json::to_string(&pending).unwrap_or_else(|_| "[]".into()))
 }
 
 #[no_mangle]
 pub extern "C" fn icebox_audit_json(handle: *mut c_void) -> *mut c_char {
-    match runtime(handle) {
-        Some(gov) => {
-            let rt = tokio_rt();
-            to_cstring(rt.block_on(gov.export_audit_json()))
-        }
-        None => to_cstring("[]".into()),
-    }
+    let gov = match runtime(handle) {
+        Some(g) => g,
+        None => return to_cstring("[]".into()),
+    };
+    let Some(rt) = tokio_rt() else { return to_cstring("[]".into()) };
+    to_cstring(rt.block_on(gov.export_audit_json()))
 }
 
 #[no_mangle]
 pub extern "C" fn icebox_audit_csv(handle: *mut c_void) -> *mut c_char {
-    match runtime(handle) {
-        Some(gov) => {
-            let rt = tokio_rt();
-            to_cstring(rt.block_on(gov.export_audit_csv()))
-        }
-        None => to_cstring(String::new()),
-    }
+    let gov = match runtime(handle) {
+        Some(g) => g,
+        None => return to_cstring(String::new()),
+    };
+    let Some(rt) = tokio_rt() else { return to_cstring(String::new()) };
+    to_cstring(rt.block_on(gov.export_audit_csv()))
 }
 
 #[no_mangle]

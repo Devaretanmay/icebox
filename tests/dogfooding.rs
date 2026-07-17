@@ -39,7 +39,7 @@ async fn setup_module(fw: &SharedFramework) -> LoadedModule {
 
 async fn run_through_seam(
     fw: &SharedFramework,
-    loaded: &LoadedModule,
+    loaded: &mut LoadedModule,
     target: &str,
     approved: bool,
 ) -> (
@@ -79,7 +79,7 @@ async fn run_through_seam(
 #[tokio::test]
 async fn seam_bypass_direct_module_run_skips_policy() {
     let fw = base_framework();
-    let loaded = setup_module(&fw).await;
+    let mut loaded = setup_module(&fw).await;
 
     let result = loaded.module.run().await;
     assert!(result.is_ok(), "direct .run() works without any governance");
@@ -259,9 +259,9 @@ async fn options_cannot_override_policy() {
 #[tokio::test]
 async fn every_execution_is_audited() {
     let fw = base_framework();
-    let loaded = setup_module(&fw).await;
+    let mut loaded = setup_module(&fw).await;
 
-    let (result, added) = run_through_seam(&fw, &loaded, "127.0.0.1", false).await;
+    let (result, added) = run_through_seam(&fw, &mut loaded, "127.0.0.1", false).await;
     assert!(result.is_ok(), "seamed run should succeed");
     assert_eq!(
         added, 1,
@@ -283,7 +283,7 @@ async fn every_execution_is_audited() {
 #[tokio::test]
 async fn audit_trail_links_decisions_to_evidence_to_preflight() {
     let fw = base_framework();
-    let loaded = setup_module(&fw).await;
+    let mut loaded = setup_module(&fw).await;
     let target = "127.0.0.1";
 
     let preflight = {
@@ -292,7 +292,7 @@ async fn audit_trail_links_decisions_to_evidence_to_preflight() {
             .preflight(&loaded, target, None, false, PolicyContext::Autonomous)
     };
 
-    let (result, _) = run_through_seam(&fw, &loaded, target, false).await;
+    let (result, _) = run_through_seam(&fw, &mut loaded, target, false).await;
     assert!(result.is_ok());
 
     let g = fw.lock().await;
@@ -326,7 +326,7 @@ async fn denied_decisions_include_reason() {
         g.operator_role = Role::Operator;
     }
 
-    let loaded = setup_module(&fw).await;
+    let mut loaded = setup_module(&fw).await;
     let pf = {
         let g = fw.lock().await;
         g.executor
@@ -458,10 +458,10 @@ fn approval_queue_handles_bulk() {
 #[tokio::test]
 async fn full_traceability_chain() {
     let fw = base_framework();
-    let loaded = setup_module(&fw).await;
+    let mut loaded = setup_module(&fw).await;
     let target = "127.0.0.1";
 
-    let (result, _) = run_through_seam(&fw, &loaded, target, false).await;
+    let (result, _) = run_through_seam(&fw, &mut loaded, target, false).await;
     assert!(result.is_ok());
     let module_result = result.unwrap();
 
@@ -496,9 +496,9 @@ async fn full_traceability_chain() {
 #[tokio::test]
 async fn operator_can_inspect_state() {
     let fw = base_framework();
-    let loaded = setup_module(&fw).await;
+    let mut loaded = setup_module(&fw).await;
 
-    let (result, _) = run_through_seam(&fw, &loaded, "127.0.0.1", false).await;
+    let (result, _) = run_through_seam(&fw, &mut loaded, "127.0.0.1", false).await;
     assert!(result.is_ok());
 
     let g = fw.lock().await;
@@ -686,7 +686,7 @@ async fn orchestrated_agents_share_audit_trail() {
 #[tokio::test]
 async fn workspace_preserves_all_governance_state() {
     let fw = base_framework();
-    let loaded = setup_module(&fw).await;
+    let mut loaded = setup_module(&fw).await;
 
     {
         let mut g = fw.lock().await;
@@ -698,7 +698,7 @@ async fn workspace_preserves_all_governance_state() {
         g.executor.remember(MemoryKind::Fact, "test memory");
     }
 
-    let _ = run_through_seam(&fw, &loaded, "127.0.0.1", false).await;
+    let _ = run_through_seam(&fw, &mut loaded, "127.0.0.1", false).await;
 
     let snap = {
         let g = fw.lock().await;
@@ -1163,7 +1163,7 @@ async fn governed_vuln_scan_blocks_high_cvss_exploit() {
 
     let (max_cvss, top_cve): (f64, String) = match exec
         .execute(
-            &loaded,
+            &mut loaded,
             &project_root,
             None,
             true,
@@ -1189,16 +1189,23 @@ async fn governed_vuln_scan_blocks_high_cvss_exploit() {
                     .filter_map(|f| f["cvss_v31"].as_f64())
                     .max_by(|a, b| a.partial_cmp(b).unwrap())
                     .unwrap_or(0.0);
-                let top = findings
-                    .iter()
-                    .find(|f| {
-                        f["cvss_v31"]
-                            .as_f64()
-                            .is_some_and(|s| (s - max).abs() < 0.01)
-                    })
-                    .and_then(|f| f["cve"].as_str().map(|s| s.to_string()))
-                    .unwrap_or_else(|| "CVE-UNKNOWN".into());
-                (max, top)
+                if max > 0.0 {
+                    let top = findings
+                        .iter()
+                        .find(|f| {
+                            f["cvss_v31"]
+                                .as_f64()
+                                .is_some_and(|s| (s - max).abs() < 0.01)
+                        })
+                        .and_then(|f| f["cve"].as_str().map(|s| s.to_string()))
+                        .unwrap_or_else(|| "CVE-UNKNOWN".into());
+                    (max, top)
+                } else {
+                    eprintln!(
+                        "[dogfood] CVEs found but no CVSS v3.1 score available, using synthetic CVSS 9.5 for policy gate"
+                    );
+                    (9.5, "CVE-TEST-SYNTHETIC".into())
+                }
             } else {
                 eprintln!("[dogfood] no real CVEs found, using synthetic CVSS 9.5 for policy test");
                 (9.5, "CVE-TEST-SYNTHETIC".into())

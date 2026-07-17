@@ -184,7 +184,7 @@ mod tests {
             .await
             .executor
             .execute(
-                &loaded,
+                &mut loaded,
                 "127.0.0.1",
                 None,
                 true,
@@ -211,13 +211,13 @@ mod tests {
             RiskLevel::Critical,
         );
         let fw = new_shared_framework(exec);
-        let loaded = crate::modules::load("reverse_shell_payload").expect("module");
+        let mut loaded = crate::modules::load("reverse_shell_payload").expect("module");
         let res = fw
             .lock()
             .await
             .executor
             .execute(
-                &loaded,
+                &mut loaded,
                 "127.0.0.1",
                 None,
                 false,

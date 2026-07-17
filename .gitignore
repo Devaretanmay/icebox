@@ -7,6 +7,7 @@
 
 # Python Build Artifacts
 dist/
+build/
 python/icebox/_native.*
 python/*.egg-info/
 *.pyc
