@@ -5,7 +5,8 @@
   
   <br />
 
-  [![Build](https://img.shields.io/github/actions/workflow/status/Devaretanmay/icebox/ci.yml?branch=main&style=flat-square)](https://github.com/Devaretanmay/icebox/actions)
+  [![Crates.io](https://img.shields.io/crates/v/icebox-gov?style=flat-square)](https://crates.io/crates/icebox-gov)
+  [![PyPI](https://img.shields.io/pypi/v/icebox-sdk?style=flat-square)](https://pypi.org/project/icebox-sdk/)
   [![Rust](https://img.shields.io/badge/rust-stable-orange?style=flat-square)](https://www.rust-lang.org/)
   [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
   [![Python SDK](https://img.shields.io/badge/python-sdk%20ready-yellow?style=flat-square)](python/icebox)
