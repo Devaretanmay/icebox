@@ -19,7 +19,22 @@ pub fn register_dynamic(entry: ModuleEntry) {
     guard.push(entry);
 }
 
+pub fn register_builtin(entry: ModuleEntry) {
+    let name = (entry.info)().name;
+    let mut guard = match DYNAMIC.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    if !guard.iter().any(|e| (e.info)().name == name) {
+        guard.push(entry);
+    }
+}
+
 pub fn discover() -> Vec<ModuleEntry> {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+    INIT.call_once(register_all_builtins);
+
     let mut all: Vec<ModuleEntry> = crate::MODULE_REGISTRY.iter().copied().collect();
     let guard = match DYNAMIC.lock() {
         Ok(g) => g,
@@ -37,6 +52,118 @@ pub fn load(name: &str) -> Option<crate::core::module::LoadedModule> {
             info: (e.info)(),
             module: (e.make)(),
         })
+}
+
+pub fn register_all_builtins() {
+    let entries: Vec<ModuleEntry> = vec![
+        ModuleEntry {
+            info: DnsResolver::build_info,
+            make: || Box::new(DnsResolver::default()),
+        },
+        ModuleEntry {
+            info: HttpProbe::build_info,
+            make: || Box::new(HttpProbe::default()),
+        },
+        ModuleEntry {
+            info: ReverseShell::build_info,
+            make: || Box::new(ReverseShell::default()),
+        },
+        ModuleEntry {
+            info: ServiceFingerprinter::build_info,
+            make: || Box::new(ServiceFingerprinter::default()),
+        },
+        ModuleEntry {
+            info: TcpPortScanner::build_info,
+            make: || Box::new(TcpPortScanner::default()),
+        },
+        ModuleEntry {
+            info: vuln_scanner::VulnScanner::build_info,
+            make: || Box::new(vuln_scanner::VulnScanner::default()),
+        },
+        ModuleEntry {
+            info: network_scanners::ArpScanner::build_info,
+            make: || Box::new(network_scanners::ArpScanner::default()),
+        },
+        ModuleEntry {
+            info: network_scanners::FtpBruteforce::build_info,
+            make: || Box::new(network_scanners::FtpBruteforce::default()),
+        },
+        ModuleEntry {
+            info: network_scanners::FtpScanner::build_info,
+            make: || Box::new(network_scanners::FtpScanner::default()),
+        },
+        ModuleEntry {
+            info: network_scanners::RdpScanner::build_info,
+            make: || Box::new(network_scanners::RdpScanner::default()),
+        },
+        ModuleEntry {
+            info: network_scanners::RedisScanner::build_info,
+            make: || Box::new(network_scanners::RedisScanner::default()),
+        },
+        ModuleEntry {
+            info: network_scanners::SmbScanner::build_info,
+            make: || Box::new(network_scanners::SmbScanner::default()),
+        },
+        ModuleEntry {
+            info: network_scanners::SshBruteforce::build_info,
+            make: || Box::new(network_scanners::SshBruteforce::default()),
+        },
+        ModuleEntry {
+            info: network_scanners::SshScanner::build_info,
+            make: || Box::new(network_scanners::SshScanner::default()),
+        },
+        ModuleEntry {
+            info: network_scanners::TelnetScanner::build_info,
+            make: || Box::new(network_scanners::TelnetScanner::default()),
+        },
+        ModuleEntry {
+            info: network_scanners::VncScanner::build_info,
+            make: || Box::new(network_scanners::VncScanner::default()),
+        },
+        ModuleEntry {
+            info: recon_scanners::DnsZoneTransfer::build_info,
+            make: || Box::new(recon_scanners::DnsZoneTransfer::default()),
+        },
+        ModuleEntry {
+            info: recon_scanners::EsScanner::build_info,
+            make: || Box::new(recon_scanners::EsScanner::default()),
+        },
+        ModuleEntry {
+            info: recon_scanners::MongoScanner::build_info,
+            make: || Box::new(recon_scanners::MongoScanner::default()),
+        },
+        ModuleEntry {
+            info: recon_scanners::MysqlScanner::build_info,
+            make: || Box::new(recon_scanners::MysqlScanner::default()),
+        },
+        ModuleEntry {
+            info: recon_scanners::PostgresScanner::build_info,
+            make: || Box::new(recon_scanners::PostgresScanner::default()),
+        },
+        ModuleEntry {
+            info: recon_scanners::SmtpScanner::build_info,
+            make: || Box::new(recon_scanners::SmtpScanner::default()),
+        },
+        ModuleEntry {
+            info: recon_scanners::SnmpScanner::build_info,
+            make: || Box::new(recon_scanners::SnmpScanner::default()),
+        },
+        ModuleEntry {
+            info: recon_scanners::SubdomainEnum::build_info,
+            make: || Box::new(recon_scanners::SubdomainEnum::default()),
+        },
+        ModuleEntry {
+            info: recon_scanners::WebPathScanner::build_info,
+            make: || Box::new(recon_scanners::WebPathScanner::default()),
+        },
+        ModuleEntry {
+            info: recon_scanners::WhoisLookup::build_info,
+            make: || Box::new(recon_scanners::WhoisLookup::default()),
+        },
+    ];
+    for e in entries {
+        register_builtin(e);
+    }
 }
 
 fn generate_linux_x64_shellcode(lhost: &str, lport: u16) -> Result<Vec<u8>, ModuleError> {

@@ -196,7 +196,8 @@ class Governance:
         
         if self._native:
             import json
-            raw_json = self._native.run_module(name, target, sandbox)
+            options = task.get("options")
+            raw_json = self._native.run_module(name, target, sandbox, options)
             return json.loads(raw_json)
         
         try:

@@ -82,7 +82,7 @@ ICEBOX will instantly block any module execution that falls outside of the allow
 
 ## Installation
 
-The easiest way to get started with ICEBOX is through the unified Python SDK, which includes an interactive setup wizard that automatically installs the underlying Rust daemon (`icebox-daemon`) and checks your environment.
+The easiest way to get started with ICEBOX is through the unified Python SDK, which includes an interactive setup wizard that automatically installs the underlying Rust daemon (`icebox-daemon`) and checks your environment. The SDK ships a native PyO3 extension (no daemon required for in-process `Governance`) and supports **Python 3.10 – 3.14**.
 
 ```sh
 # 1. Install the unified CLI and SDK
