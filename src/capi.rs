@@ -72,16 +72,20 @@ unsafe fn check_task(handle: *mut c_void, task_json: *const c_char, auto: bool) 
         return to_cstring(json!({"error": "failed to create tokio runtime"}).to_string());
     };
     let name = task.name.clone();
-    let target = task.target.clone();
     let options = task.options.clone();
     let action = move || {
         let name = name.clone();
-        let target = target.clone();
         let options = options.clone();
         async move {
-            match gov.execute_module(&name, &target, &options).await {
-                Ok(s) => Ok(serde_json::Value::String(s)),
-                Err(e) => Err(e),
+            let Some(mut loaded) = crate::modules::load(&name) else {
+                return Err(format!("module not found: {name}"));
+            };
+            for (k, v) in &options {
+                let _ = loaded.module.set_option(k, v);
+            }
+            match loaded.module.run().await {
+                Ok(r) => Ok(serde_json::to_value(r).unwrap_or_default()),
+                Err(e) => Err(e.to_string()),
             }
         }
     };

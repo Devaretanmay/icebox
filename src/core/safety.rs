@@ -407,6 +407,18 @@ impl PolicyDecision {
     }
 }
 
+impl std::str::FromStr for PolicyDecision {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "allow" => Ok(PolicyDecision::Allow),
+            "deny" => Ok(PolicyDecision::Deny("recorded as denied".into())),
+            "require_approval" => Ok(PolicyDecision::RequireApproval("recorded as requiring approval".into())),
+            other => Err(format!("unknown policy decision: {other}")),
+        }
+    }
+}
+
 pub trait PolicyEngine {
     fn evaluate(&self, req: &PolicyRequest) -> PolicyDecision;
 }
@@ -624,23 +636,32 @@ pub struct ConfigPolicy {
 
 impl PolicyEngine for ConfigPolicy {
     fn evaluate(&self, req: &PolicyRequest) -> PolicyDecision {
+        // Deny always wins — checked first.
         if let Some(c) = self.rules.denied(&req.capabilities) {
             return PolicyDecision::Deny(format!("capability {} denied by policy", c.as_str()));
         }
-        for r in &self.rules.rules {
-            if let PolicyRule::RequireApproval {
-                capability,
-                target_pattern,
-            } = r
-            {
-                if req.capabilities.contains(capability)
-                    && target_matches(&req.target, target_pattern)
+
+        // AllowCapability pre-approves — checked before any RequireApproval gate
+        // so it can waive explicit RequireApproval rules, CVSS gates, and the
+        // default destructive/high-risk approval requirement.
+        let pre_approved = self.rules.allows(&req.capabilities);
+
+        if !pre_approved {
+            for r in &self.rules.rules {
+                if let PolicyRule::RequireApproval {
+                    capability,
+                    target_pattern,
+                } = r
                 {
-                    return PolicyDecision::RequireApproval(format!(
-                        "capability {} on {} requires approval",
-                        capability.as_str(),
-                        req.target
-                    ));
+                    if req.capabilities.contains(capability)
+                        && target_matches(&req.target, target_pattern)
+                    {
+                        return PolicyDecision::RequireApproval(format!(
+                            "capability {} on {} requires approval",
+                            capability.as_str(),
+                            req.target
+                        ));
+                    }
                 }
             }
         }
@@ -657,28 +678,30 @@ impl PolicyEngine for ConfigPolicy {
                 }
             }
         }
-        if let Some(ref cvss) = req.cvss {
-            for r in &self.rules.rules {
-                if let PolicyRule::RequireApprovalIf {
-                    cvss_above,
-                    epss_above,
-                    kev,
-                } = r
-                {
-                    let cvss_triggers = cvss_above
-                        .map(|t| cvss.effective_score() > t)
-                        .unwrap_or(false);
-                    let epss_triggers = epss_above
-                        .and_then(|t| cvss.epss.map(|e| e > t))
-                        .unwrap_or(false);
-                    let kev_triggers = *kev && cvss.kev;
-                    if cvss_triggers || epss_triggers || kev_triggers {
-                        return PolicyDecision::RequireApproval(format!(
-                            "CVSS risk (score={:.1}, epss={:?}, kev={}) exceeds policy threshold",
-                            cvss.effective_score(),
-                            cvss.epss,
-                            cvss.kev
-                        ));
+        if !pre_approved {
+            if let Some(ref cvss) = req.cvss {
+                for r in &self.rules.rules {
+                    if let PolicyRule::RequireApprovalIf {
+                        cvss_above,
+                        epss_above,
+                        kev,
+                    } = r
+                    {
+                        let cvss_triggers = cvss_above
+                            .map(|t| cvss.effective_score() > t)
+                            .unwrap_or(false);
+                        let epss_triggers = epss_above
+                            .and_then(|t| cvss.epss.map(|e| e > t))
+                            .unwrap_or(false);
+                        let kev_triggers = *kev && cvss.kev;
+                        if cvss_triggers || epss_triggers || kev_triggers {
+                            return PolicyDecision::RequireApproval(format!(
+                                "CVSS risk (score={:.1}, epss={:?}, kev={}) exceeds policy threshold",
+                                cvss.effective_score(),
+                                cvss.epss,
+                                cvss.kev
+                            ));
+                        }
                     }
                 }
             }
@@ -688,7 +711,7 @@ impl PolicyEngine for ConfigPolicy {
             context: self.context,
         }
         .evaluate(req);
-        if matches!(d, PolicyDecision::RequireApproval(_)) && self.rules.allows(&req.capabilities) {
+        if matches!(d, PolicyDecision::RequireApproval(_)) && pre_approved {
             d = PolicyDecision::Allow;
         }
         d
@@ -1029,5 +1052,110 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(policy.denied_payload(&result), "");
+    }
+
+    #[test]
+    fn allow_capability_overrides_explicit_require_approval() {
+        use crate::core::safety::PolicyEngine;
+        let policy = ConfigPolicy {
+            max_risk: RiskLevel::Critical,
+            context: PolicyContext::Cli,
+            rules: PolicySet {
+                rules: vec![
+                    PolicyRule::AllowCapability(Capability::CredentialAccess),
+                    PolicyRule::RequireApproval {
+                        capability: Capability::CredentialAccess,
+                        target_pattern: "*".into(),
+                    },
+                ],
+                version: 1,
+            },
+        };
+        let req = PolicyRequest {
+            target: "10.0.0.5".into(),
+            capabilities: vec![Capability::CredentialAccess],
+            impact: RiskLevel::Critical,
+            destructive: true,
+            charter_accepted: true,
+            in_scope: true,
+            approved: false,
+            context: PolicyContext::Cli,
+            cvss: None,
+        };
+        assert!(
+            matches!(policy.evaluate(&req), PolicyDecision::Allow),
+            "AllowCapability must waive an explicit RequireApproval rule"
+        );
+    }
+
+    #[test]
+    fn allow_capability_overrides_cvss_require_approval() {
+        use crate::core::safety::PolicyEngine;
+        let policy = ConfigPolicy {
+            max_risk: RiskLevel::Critical,
+            context: PolicyContext::Cli,
+            rules: PolicySet {
+                rules: vec![
+                    PolicyRule::AllowCapability(Capability::NetworkScan),
+                    PolicyRule::RequireApprovalIf {
+                        cvss_above: Some(7.0),
+                        epss_above: None,
+                        kev: false,
+                    },
+                ],
+                version: 1,
+            },
+        };
+        let req = PolicyRequest {
+            target: "10.0.0.5".into(),
+            capabilities: vec![Capability::NetworkScan],
+            impact: RiskLevel::Low,
+            destructive: false,
+            charter_accepted: true,
+            in_scope: true,
+            approved: false,
+            context: PolicyContext::Cli,
+            cvss: Some(CvssScore {
+                cvss_v31: Some(9.5),
+                cvss_v40: None,
+                epss: None,
+                kev: false,
+            }),
+        };
+        assert!(
+            matches!(policy.evaluate(&req), PolicyDecision::Allow),
+            "AllowCapability must waive RequireApprovalIf CVSS gate"
+        );
+    }
+
+    #[test]
+    fn deny_capability_still_wins_over_allow() {
+        use crate::core::safety::PolicyEngine;
+        let policy = ConfigPolicy {
+            max_risk: RiskLevel::Critical,
+            context: PolicyContext::Cli,
+            rules: PolicySet {
+                rules: vec![
+                    PolicyRule::AllowCapability(Capability::CredentialAccess),
+                    PolicyRule::DenyCapability(Capability::CredentialAccess),
+                ],
+                version: 1,
+            },
+        };
+        let req = PolicyRequest {
+            target: "10.0.0.5".into(),
+            capabilities: vec![Capability::CredentialAccess],
+            impact: RiskLevel::Critical,
+            destructive: true,
+            charter_accepted: true,
+            in_scope: true,
+            approved: false,
+            context: PolicyContext::Cli,
+            cvss: None,
+        };
+        assert!(
+            matches!(policy.evaluate(&req), PolicyDecision::Deny(_)),
+            "DenyCapability must remain absolute even with AllowCapability present"
+        );
     }
 }

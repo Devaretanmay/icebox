@@ -56,8 +56,6 @@ struct RunPayload {
     #[serde(default)]
     approved: bool,
     #[serde(default)]
-    sandbox: bool,
-    #[serde(default)]
     engine: Option<String>,
     #[serde(default)]
     options: std::collections::HashMap<String, serde_json::Value>,
@@ -537,7 +535,6 @@ async fn run_module(
             payload.approved,
             PolicyContext::Rest,
             Some(job_id.as_u64()),
-            payload.sandbox,
             engine,
         )
         .await;
@@ -977,7 +974,6 @@ async fn approve_approval(
             true,
             PolicyContext::Rest,
             None,
-            false,
             None,
         )
         .await
@@ -1186,9 +1182,15 @@ async fn govern_handler(
 
 async fn record_handler(
     State(fw): State<SharedFramework>,
-    Json(payload): Json<(GovernAction, ActionOutcome)>,
-) -> Json<RecordResult> {
+    Json(payload): Json<(GovernAction, ActionOutcome, Option<String>)>,
+) -> Result<Json<RecordResult>, StatusCode> {
     let mut guard = fw.lock().await;
-    let result = guard.executor.record_action(&payload.0, payload.1);
-    Json(result)
+    let decision = match payload.2 {
+        Some(ref s) => s.parse().map_err(|_: String| StatusCode::BAD_REQUEST)?,
+        None => {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    };
+    let result = guard.executor.record_action(&payload.0, payload.1, decision);
+    Ok(Json(result))
 }

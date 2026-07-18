@@ -356,7 +356,6 @@ async fn deny_payload_blocks_generator_pre_execution() {
             true,
             PolicyContext::Autonomous,
             None,
-            false,
             None,
         )
         .await

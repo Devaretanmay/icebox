@@ -60,7 +60,6 @@ async fn run_through_seam(
             approved,
             PolicyContext::Autonomous,
             Some(jid.as_u64()),
-            false,
             None,
         )
         .await;
@@ -1227,7 +1226,6 @@ async fn governed_vuln_scan_blocks_high_cvss_exploit() {
             true,
             PolicyContext::Autonomous,
             None,
-            false,
             None,
         )
         .await

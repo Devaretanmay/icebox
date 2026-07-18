@@ -13,7 +13,7 @@ use icebox::core::job::Job;
 use icebox::core::module::LoadedModule;
 use icebox::core::safety::{
     Charter, PolicyContext, PolicyDecision, PolicyEngine, PolicyRule, PolicySet, RiskLevel,
-    ScopeManager,
+    ScopeManager, Tier,
 };
 use icebox::core::session::{Session, SessionId, SessionKind};
 use icebox::core::Capability;
@@ -107,11 +107,13 @@ async fn main() -> anyhow::Result<()> {
         .position(|a| a == "--auth-token")
         .and_then(|i| args.get(i + 1).cloned());
     let auth = icebox::interfaces::rest::resolve_auth(no_auth, auth_token);
-    let fw = new_shared_framework(ModuleExecutor::new(
+    let mut executor = ModuleExecutor::new(
         Charter::default(),
         ScopeManager::default(),
         RiskLevel::Critical,
-    ));
+    );
+    executor.tier = Tier::Freezer;
+    let fw = new_shared_framework(executor);
     if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
         let auto_path = std::path::Path::new(&home).join(".icebox/policy.yaml");
         if auto_path.exists() {
@@ -637,15 +639,11 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
         return;
     };
     let mut approved = false;
-    let mut sandbox = false;
     let mut engine = None;
     let mut tp = a;
     while let Some(first) = tp.first().copied() {
         if first == "--approve" {
             approved = true;
-            tp = &tp[1..];
-        } else if first == "--sandbox" {
-            sandbox = true;
             tp = &tp[1..];
         } else if first == "--engine" {
             if let Some(e) = tp.get(1) {
@@ -693,11 +691,7 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
         }
         return;
     }
-    if sandbox {
-        println!("{COLOR_TEAL}[SANDBOX] isolation enabled - preflight still enforced{COLOR_RESET}");
-    } else {
-        println!("preflight passed");
-    }
+    println!("preflight passed");
 
     let job = Job::new(&l.info.name, &target);
     let jid = job.id;
@@ -711,7 +705,6 @@ async fn cmd_run(a: &[&str], s: &mut CliState, fw: &mut Framework) {
             approved,
             PolicyContext::Cli,
             Some(jid.as_u64()),
-            sandbox,
             engine,
         )
         .await
@@ -1241,7 +1234,7 @@ async fn cmd_approve(a: &[&str], fw: SharedFramework) {
             for (k, v) in &req.options {
                 let _ = loaded.module.set_option(k, v);
             }
-            match g.executor.execute(&mut loaded, &req.target, None, true, PolicyContext::Cli, None, false, None).await {
+            match g.executor.execute(&mut loaded, &req.target, None, true, PolicyContext::Cli, None, None).await {
                 Ok(_) => println!("approved + executed: #{id}"),
                 Err(e) => println!("approved but execute failed: {e}"),
             }

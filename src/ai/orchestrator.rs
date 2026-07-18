@@ -183,7 +183,6 @@ mod tests {
                 true,
                 PolicyContext::Cli,
                 None,
-                false,
                 None,
             )
             .await;
@@ -216,7 +215,6 @@ mod tests {
                 false,
                 PolicyContext::Cli,
                 None,
-                false,
                 None,
             )
             .await;

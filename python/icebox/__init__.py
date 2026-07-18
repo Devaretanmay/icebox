@@ -24,22 +24,22 @@ class Workspace:
         self.client.add_scope(self.target)
         self.client.set_mode(self.mode)
     
-    def execute(self, module: str, sandbox: bool = False, approved: bool = True, options: dict | None = None) -> dict:
+    def execute(self, module: str, approved: bool = True, options: dict | None = None) -> dict:
         """Executes a module against the workspace target."""
-        return self.client.run_module(module, self.target, sandbox=sandbox, approved=approved, options=options)
+        return self.client.run_module(module, self.target, approved=approved, options=options)
 
     def audit(self, n: int = 20) -> list[dict]:
         """Retrieves the JSON audit trail for the workspace."""
         return self.client.audit(n)
 
     @contextlib.contextmanager
-    def tunnel(self, port: int, sandbox: bool = False):
+    def tunnel(self, port: int):
         """Creates a governed tunnel to the target port.
         
         Yields a local port that the agent can connect to. ICEBOX will intercept,
         govern, and forward the traffic to the real target.
         """
-        res = self.client.bind_proxy(self.target, port, sandbox=sandbox)
+        res = self.client.bind_proxy(self.target, port)
         if "error" in res and res["error"]:
             raise IceboxError(f"Failed to bind proxy: {res['error']}")
         local_port = res.get("local_port")

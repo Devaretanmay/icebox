@@ -6,7 +6,6 @@ use serde_json::Value;
 use tokio::sync::{broadcast, Mutex};
 
 use crate::core::audit::HashChain;
-use crate::core::executor::ModuleExecutor;
 use crate::core::governance::{ApprovalQueue, ApprovalRequest, ApprovalStatus, Role};
 use crate::core::module::{Capability, Intent};
 use crate::core::safety::{
@@ -186,39 +185,6 @@ impl GovernanceRuntime {
         self.enforce(task, action, false).await
     }
 
-    pub async fn execute_module(
-        &self,
-        name: &str,
-        target: &str,
-        options: &HashMap<String, String>,
-    ) -> Result<String, String> {
-        let cfg = self.state.lock().await.config.clone();
-        let mut exec = ModuleExecutor::new(cfg.charter, cfg.scope, cfg.max_risk);
-        exec.policy_set = cfg.policy_set;
-        let Some(mut loaded) = crate::modules::load(name) else {
-            return Err(format!("module not found: {name}"));
-        };
-        for (k, v) in options {
-            let _ = loaded.module.set_option(k, v);
-        }
-        match exec
-            .execute(
-                &mut loaded,
-                target,
-                None,
-                true,
-                PolicyContext::Rest,
-                None,
-                false,
-                None,
-            )
-            .await
-        {
-            Ok(r) => Ok(serde_json::to_string(&r).unwrap_or_default()),
-            Err(e) => Err(e.to_string()),
-        }
-    }
-
     /// Evaluate policy and record the decision without running the action.
     /// Returns Allowed (with null result), Blocked, or NeedsApproval.
     /// The caller runs the action only when Allowed, then calls `complete()`.
@@ -293,6 +259,7 @@ impl GovernanceRuntime {
         &self,
         task: TaskSpec,
         result: Value,
+        decision: PolicyDecision,
     ) -> GovernedOutcome {
         let mut st = self.state.lock().await;
         let intents = derive_intents(&task.capabilities);
@@ -306,7 +273,7 @@ impl GovernanceRuntime {
             intents,
             impact: task.impact,
             context: task.context,
-            decision: PolicyDecision::Allow,
+            decision,
         };
         st.audit.append(rec.clone());
         let _ = st.audit_tx.send(rec);

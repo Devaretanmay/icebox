@@ -40,7 +40,7 @@ async fn test_sandbox_policy_enforcement() {
 
     let mut loaded = icebox::modules::load("tcp_port_scanner").expect("module");
 
-    let sandboxed = exec
+    let result = exec
         .execute(
             &mut loaded,
             "127.0.0.1",
@@ -48,26 +48,8 @@ async fn test_sandbox_policy_enforcement() {
             false,
             PolicyContext::Cli,
             None,
-            true,
             None,
         )
         .await;
-    assert!(
-        sandboxed.is_err(),
-        "policy must block even when sandbox execution is requested"
-    );
-
-    let native = exec
-        .execute(
-            &mut loaded,
-            "127.0.0.1",
-            None,
-            false,
-            PolicyContext::Cli,
-            None,
-            false,
-            None,
-        )
-        .await;
-    assert!(native.is_err(), "policy must block without sandbox");
+    assert!(result.is_err(), "policy must block regardless of tier");
 }

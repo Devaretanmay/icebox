@@ -4,9 +4,37 @@ First off, thank you for considering contributing to ICEBOX. The project is in
 its early stages, and every contribution — whether code, documentation, bug
 reports, or design feedback — helps shape what it becomes.
 
+> ## ❄️ Kernel Freeze (effective `v0.2.5-kernel-complete`)
+>
+> The ICEBOX **kernel** — the Governed Execution Environment (GEE) and its
+> supporting engines in `src/core/` — is **feature-complete and frozen**. This
+> is the single seam every human operator, REST client, and LLM agent must pass
+> through before anything touches a target.
+>
+> **What is frozen (Layer 1 — do not change behavior):**
+> - `src/core/gee.rs` — GEE lifecycle and stage machine
+> - `src/core/safety.rs` — policy engine, `PolicyDecision`, capability rules
+> - `src/core/audit.rs` — SHA-256 audit hash-chain
+> - `src/core/sandbox.rs` — isolation (Docker/tier-driven)
+> - `src/core/executor.rs` — `ModuleExecutor`, `execute()`, `transition_to()`
+> - `src/core/sdk.rs`, `src/core/validation.rs` — validation + SDK primitives
+> - Approval / validation semantics and CLI governance semantics
+>
+> **What belongs outside the kernel (Layers 2 & 3 — welcome contributions):**
+> - Security modules, policy packs, agent integrations (`src/modules/`, etc.)
+> - SDK ergonomics (the `govern()` API, Python/Rust wrappers)
+> - REST/CLI surface polish, docs, examples, distribution, dashboard
+>
+> **Rule:** No new runtime feature is accepted into the kernel unless it
+> *materially strengthens a GEE guarantee* (e.g. stronger isolation, stronger
+> audit integrity). Bug fixes and security fixes are always welcome. See
+> [`docs/GEE_INVARIANTS.md`](docs/GEE_INVARIANTS.md) for the non-negotiable
+> guarantees the frozen kernel provides.
+
 ## Table of Contents
 
 - [Code of Conduct](#code-of-conduct)
+- [Kernel Freeze](#-kernel-freeze-effective-v025-kernel-complete)
 - [How to Contribute](#how-to-contribute)
 - [Development Setup](#development-setup)
 - [Project Structure](#project-structure)

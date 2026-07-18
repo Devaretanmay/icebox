@@ -90,7 +90,6 @@ class IceboxClient:
         self,
         name: str,
         target: str,
-        sandbox: bool = False,
         approved: bool = False,
         options: dict | None = None,
         engine: str | None = None,
@@ -99,7 +98,6 @@ class IceboxClient:
             f"/api/v1/modules/{name}/run",
             {
                 "target": target,
-                "sandbox": sandbox,
                 "approved": approved,
                 "options": options or {},
                 "engine": engine,
@@ -241,12 +239,19 @@ class GovernClient:
         """
         return self._post("/api/v1/govern", action)
 
-    def record(self, action: dict, outcome: dict) -> dict:
+    def record(self, action: dict, outcome: dict, decision: str = "allow") -> dict:
         """Record the outcome of a previously governed action.
 
         Appends evidence and an audit-chain entry, returns chain tip.
+
+        Args:
+            action: The original action dict (same as passed to govern()).
+            outcome: Outcome dict with success, evidence, data.
+            decision: The decision from govern() — "allow", "deny", or
+                      "require_approval". Defaults to "allow" only for
+                      backward compatibility; always pass the real value.
         """
-        return self._post("/api/v1/govern/record", (action, outcome))
+        return self._post("/api/v1/govern/record", (action, outcome, decision))
 
 
 class Governance:
@@ -268,16 +273,15 @@ class Governance:
     def check(self, task: dict) -> dict:
         name = task.get("module", task.get("name", ""))
         target = task.get("target", "")
-        sandbox = task.get("sandbox", False)
         
         if self._native:
             import json
             options = task.get("options")
-            raw_json = self._native.run_module(name, target, sandbox, options)
+            raw_json = self._native.run_module(name, target, options)
             return json.loads(raw_json)
         
         try:
-            return self._client.run_module(name, target, sandbox=sandbox)
+            return self._client.run_module(name, target)
         except Exception as e:
             return {"error": str(e)}
 
@@ -324,11 +328,11 @@ class Governance:
             return {"type": "allowed", "decision_id": 0}
         return json.loads(self._native.preflight_action(json.dumps(task)))
 
-    def record_action(self, task: dict, result: Any) -> dict:
+    def record_action(self, task: dict, result: Any, decision: str = "allow") -> dict:
         if not self._native:
             return {"type": "allowed", "decision_id": 0}
         return json.loads(
-            self._native.complete_action(json.dumps(task), json.dumps(result))
+            self._native.complete_action(json.dumps(task), json.dumps(result), decision)
         )
 
     def governed(self, capability: str | None = None, impact: str = "low",
@@ -362,7 +366,7 @@ class Governance:
                 t = outcome.get("type", outcome.get("variant", ""))
                 if t == "allowed":
                     result = fn(*args, **kwargs)
-                    self.record_action(task, result)
+                    self.record_action(task, result, "allow")
                     return result
                 if t == "needs_approval":
                     raise NeedsApproval(outcome.get("reason", "approval required"))

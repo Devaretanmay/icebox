@@ -4,7 +4,7 @@ use tokio::runtime::Runtime;
 
 use icebox::core::executor::ModuleExecutor;
 use icebox::core::framework::{new_shared_framework, SharedFramework};
-use icebox::core::safety::{Charter, PolicyContext, RiskLevel, ScopeManager};
+use icebox::core::safety::{Charter, PolicyContext, RiskLevel, ScopeManager, Tier};
 use icebox::core::sdk::{govern, GovernanceConfig, GovernanceRuntime, TaskSpec};
 
 #[pyclass]
@@ -30,7 +30,8 @@ impl NativeIcebox {
             _ => RiskLevel::Critical,
         };
         let scope_mgr = ScopeManager::new(scopes.clone().unwrap_or_default());
-        let executor = ModuleExecutor::new(charter.clone(), scope_mgr, risk);
+        let mut executor = ModuleExecutor::new(charter.clone(), scope_mgr, risk);
+        executor.tier = Tier::Freezer;
         let fw = new_shared_framework(executor);
         let cfg = GovernanceConfig {
             charter,
@@ -42,13 +43,12 @@ impl NativeIcebox {
         Ok(NativeIcebox { rt, fw, gov })
     }
 
-    #[pyo3(signature = (name, target, sandbox=false, options=None))]
+    #[pyo3(signature = (name, target, options=None))]
     fn run_module(
         &self,
         py: Python<'_>,
         name: String,
         target: String,
-        sandbox: bool,
         options: Option<std::collections::HashMap<String, String>>,
     ) -> PyResult<String> {
         let fw = self.fw.clone();
@@ -79,7 +79,6 @@ impl NativeIcebox {
                             true,
                             PolicyContext::Rest,
                             None,
-                            sandbox,
                             None,
                         )
                         .await
@@ -122,13 +121,15 @@ impl NativeIcebox {
             .map_err(|e| PyRuntimeError::new_err(format!("serialize: {e}")))
     }
 
-    #[pyo3(signature = (task_json, result_json))]
-    fn complete_action(&self, task_json: String, result_json: String) -> PyResult<String> {
+    #[pyo3(signature = (task_json, result_json, decision="allow"))]
+    fn complete_action(&self, task_json: String, result_json: String, decision: &str) -> PyResult<String> {
         let task: TaskSpec = serde_json::from_str(&task_json)
             .map_err(|e| PyRuntimeError::new_err(format!("invalid task: {e}")))?;
         let result: serde_json::Value = serde_json::from_str(&result_json)
             .map_err(|e| PyRuntimeError::new_err(format!("invalid result: {e}")))?;
-        let outcome = self.rt.block_on(self.gov.complete(task, result));
+        let decision: icebox::core::safety::PolicyDecision = decision.parse()
+            .map_err(|e: String| PyRuntimeError::new_err(e))?;
+        let outcome = self.rt.block_on(self.gov.complete(task, result, decision));
         serde_json::to_string(&outcome)
             .map_err(|e| PyRuntimeError::new_err(format!("serialize: {e}")))
     }

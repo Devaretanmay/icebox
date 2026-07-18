@@ -1,18 +1,21 @@
-use sha1::{Digest, Sha1};
+use sha2::{Digest, Sha256};
+use std::path::Path;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::core::safety::DecisionRecord;
 
+const GENESIS: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+
 fn digest(bytes: &[u8]) -> String {
-    let mut h = Sha1::new();
+    let mut h = Sha256::new();
     h.update(bytes);
     hex::encode(h.finalize())
 }
 
 /// A tamper-evident audit entry: a decision record chained to its predecessor
-/// by a SHA-1 hash over (prev_hash || canonical record).
-#[derive(Debug, Clone, Serialize)]
+/// by a SHA-256 hash over (prev_hash || canonical record).
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEntry {
     pub seq: u64,
     pub prev_hash: String,
@@ -46,7 +49,7 @@ impl AuditEntry {
 /// The append-only, hash-chained audit ledger of a Governed Execution Environment.
 /// Every decision (allow, deny, require-approval) is linked to the one before it,
 /// so any retrospective modification of a record breaks the chain at verify().
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HashChain {
     entries: Vec<AuditEntry>,
     head: String,
@@ -56,7 +59,7 @@ impl HashChain {
     pub fn new() -> Self {
         HashChain {
             entries: Vec::new(),
-            head: "0".repeat(40),
+            head: GENESIS.to_string(),
         }
     }
 
@@ -94,7 +97,7 @@ impl HashChain {
         self.entries[start..].iter().map(|e| e.record.clone()).collect()
     }
 
-    /// Hex-encoded SHA-1 hash of the latest entry in the chain.
+    /// Hex-encoded SHA-256 hash of the latest entry in the chain.
     pub fn tip_hex(&self) -> String {
         self.head.clone()
     }
@@ -102,7 +105,7 @@ impl HashChain {
     /// Recompute every link from the genesis hash; returns false on the first
     /// entry whose hash does not match its claimed predecessor (tamper proof).
     pub fn verify(&self) -> bool {
-        let mut prev = "0".repeat(40);
+        let mut prev = GENESIS.to_string();
         for e in &self.entries {
             if e.seq == 0 || e.prev_hash != prev {
                 return false;
@@ -114,6 +117,25 @@ impl HashChain {
             prev = e.hash.clone();
         }
         true
+    }
+
+    /// Persist the chain to a JSON file on disk.
+    pub fn save(&self, path: impl AsRef<Path>) -> Result<(), String> {
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| format!("audit serialization failed: {e}"))?;
+        std::fs::write(path.as_ref(), json)
+            .map_err(|e| format!("audit write failed: {e}"))
+    }
+
+    /// Restore a chain from a JSON file on disk. Returns an empty chain if
+    /// the file does not exist (first run).
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, String> {
+        if !path.as_ref().exists() {
+            return Ok(HashChain::new());
+        }
+        let json = std::fs::read_to_string(path.as_ref())
+            .map_err(|e| format!("audit read failed: {e}"))?;
+        serde_json::from_str(&json).map_err(|e| format!("audit parse failed: {e}"))
     }
 }
 
@@ -192,5 +214,49 @@ mod tests {
             entry.prev_hash = "badbadbad".into();
         }
         assert!(!c.verify());
+    }
+
+    #[test]
+    fn sha256_genesis_is_64_hex_chars() {
+        // Regression: hash chain must use SHA-256 (64 hex chars), not SHA-1 (40).
+        let mut c = HashChain::new();
+        c.append(fake_record(1));
+        assert_eq!(c.tip_hex().len(), 64, "SHA-256 tip must be 64 hex chars");
+        assert!(c.tip_hex().chars().all(|ch| ch.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn save_and_load_roundtrip_preserves_chain() {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!("icebox_audit_test_{}.json", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+
+        let mut c = HashChain::new();
+        for i in 1..=5 {
+            c.append(fake_record(i));
+        }
+        assert!(c.verify());
+
+        c.save(&path).expect("save must succeed");
+        let loaded = HashChain::load(&path).expect("load must succeed");
+        assert_eq!(loaded.len(), 5);
+        assert!(loaded.verify(), "restored chain must still verify");
+        assert_eq!(loaded.tip_hex(), c.tip_hex(), "tip must match after roundtrip");
+        assert_eq!(loaded.records().len(), c.records().len());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn load_missing_file_returns_empty_chain() {
+        let path = std::env::temp_dir().join(format!(
+            "icebox_audit_missing_{}_{}.json",
+            std::process::id(),
+            "nonexistent"
+        ));
+        let _ = std::fs::remove_file(&path);
+        let c = HashChain::load(&path).expect("load of missing file must yield empty chain");
+        assert!(c.is_empty());
+        assert!(c.verify());
     }
 }

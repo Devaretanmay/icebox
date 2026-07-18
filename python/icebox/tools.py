@@ -58,10 +58,6 @@ def openai_tools(client: IceboxClient) -> list[dict]:
             "type": "string",
             "description": "Target IP address or hostname",
         }
-        properties["sandbox"] = {
-            "type": "boolean",
-            "description": "Run inside an isolated Docker sandbox",
-        }
         required_fields = ["target"] + [r for r in required if r != "host"]
 
         tools.append(
@@ -92,8 +88,7 @@ def dispatch_tool_call(client: IceboxClient, tool_name: str, arguments: dict) ->
         raise ValueError(f"Not an ICEBOX tool: {tool_name}")
     module_name = tool_name[len("icebox_"):]
     target = arguments.pop("target", "")
-    sandbox = arguments.pop("sandbox", False)
-    return client.run_module(module_name, target=target, sandbox=sandbox, options=arguments)
+    return client.run_module(module_name, target=target, options=arguments)
 
 
 try:
@@ -102,7 +97,6 @@ try:
 
     class _IceboxInput(BaseModel):
         target: str = Field(description="Target IP address or hostname")
-        sandbox: bool = Field(default=False, description="Run in Docker sandbox")
         options: dict = Field(default_factory=dict, description="Module-specific options")
 
     class IceboxTool(BaseTool):
@@ -118,14 +112,14 @@ try:
 
         args_schema: type[BaseModel] = _IceboxInput
 
-        def _run(self, target: str, sandbox: bool = False, options: dict | None = None) -> str:
+        def _run(self, target: str, options: dict | None = None) -> str:
             result = self.client.run_module(
-                self.module, target=target, sandbox=sandbox, options=options or {}
+                self.module, target=target, options=options or {}
             )
             return str(result)
 
-        async def _arun(self, target: str, sandbox: bool = False, options: dict | None = None) -> str:
-            return self._run(target, sandbox, options)
+        async def _arun(self, target: str, options: dict | None = None) -> str:
+            return self._run(target, options)
 
 except ImportError:
     class IceboxTool:  # type: ignore[no-redef]

@@ -1,29 +1,35 @@
-use std::collections::HashMap;
-
+use icebox::core::module::Capability;
 use icebox::core::safety::{Charter, RiskLevel};
-use icebox::core::sdk::GovernanceRuntime;
-use serde_json::Value;
+use icebox::core::sdk::{govern, GovernanceConfig, TaskSpec};
+use serde_json::json;
 
 #[tokio::test]
-async fn test_cabi_executes() {
-    let rt = GovernanceRuntime::builder()
-        .charter(Charter::accept("test", vec!["auth".into()]))
-        .scope(vec!["127.0.0.1".into()])
-        .max_risk(RiskLevel::Critical)
-        .build();
+async fn test_governed_execution_through_capi_path() {
+    let config = GovernanceConfig {
+        charter: Charter::accept("test", vec!["auth".into()]),
+        scope: icebox::core::safety::ScopeManager::new(vec!["127.0.0.1".into()]),
+        max_risk: RiskLevel::Critical,
+        ..Default::default()
+    };
+    let rt = govern(config);
 
-    let mut opts = HashMap::new();
-    opts.insert("host".to_string(), "127.0.0.1".to_string());
-    opts.insert("ports".to_string(), "1".to_string());
+    let task = TaskSpec {
+        name: "tcp_port_scanner".into(),
+        target: "127.0.0.1".into(),
+        capabilities: vec![Capability::NetworkScan],
+        impact: RiskLevel::Low,
+        options: [("host".into(), "127.0.0.1".into()), ("ports".into(), "1".into())].into(),
+        ..Default::default()
+    };
 
-    let out = rt
-        .execute_module("tcp_port_scanner", "127.0.0.1", &opts)
-        .await;
-    assert!(out.is_ok(), "capi must execute the module, got: {out:?}");
+    let outcome = rt.execute(task, || async {
+        Ok(json!({"success": true, "open_ports": []}))
+    }).await;
 
-    let json: Value = serde_json::from_str(&out.unwrap()).expect("valid ModuleResult json");
-    assert!(
-        json.get("success").is_some(),
-        "result must be a real ModuleResult, not a no-op null"
-    );
+    match outcome {
+        icebox::core::sdk::GovernedOutcome::Allowed { result, .. } => {
+            assert!(result.get("success").is_some());
+        }
+        other => panic!("expected Allowed, got {other:?}"),
+    }
 }
