@@ -122,12 +122,18 @@ impl NativeIcebox {
     }
 
     #[pyo3(signature = (task_json, result_json, decision="allow"))]
-    fn complete_action(&self, task_json: String, result_json: String, decision: &str) -> PyResult<String> {
+    fn complete_action(
+        &self,
+        task_json: String,
+        result_json: String,
+        decision: &str,
+    ) -> PyResult<String> {
         let task: TaskSpec = serde_json::from_str(&task_json)
             .map_err(|e| PyRuntimeError::new_err(format!("invalid task: {e}")))?;
         let result: serde_json::Value = serde_json::from_str(&result_json)
             .map_err(|e| PyRuntimeError::new_err(format!("invalid result: {e}")))?;
-        let decision: icebox::core::safety::PolicyDecision = decision.parse()
+        let decision: icebox::core::safety::PolicyDecision = decision
+            .parse()
             .map_err(|e: String| PyRuntimeError::new_err(e))?;
         let outcome = self.rt.block_on(self.gov.complete(task, result, decision));
         serde_json::to_string(&outcome)

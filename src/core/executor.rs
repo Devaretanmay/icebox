@@ -234,7 +234,12 @@ impl ModuleExecutor {
     /// Record completion of a prior governed action.
     /// Appends evidence and an audit-chain entry recording the actual
     /// policy decision (not a hardcoded Allow). Returns the chain tip.
-    pub fn record_action(&mut self, action: &GovernAction, outcome: ActionOutcome, decision: PolicyDecision) -> RecordResult {
+    pub fn record_action(
+        &mut self,
+        action: &GovernAction,
+        outcome: ActionOutcome,
+        decision: PolicyDecision,
+    ) -> RecordResult {
         for content in &outcome.evidence {
             let seq = self.evidence.len();
             self.evidence.push(Evidence::new(
@@ -246,7 +251,8 @@ impl ModuleExecutor {
             ));
         }
 
-        let capability = Capability::from_str(&action.capability).unwrap_or(Capability::NetworkScan);
+        let capability =
+            Capability::from_str(&action.capability).unwrap_or(Capability::NetworkScan);
         let intents = vec![capability.intent()];
 
         let decision_id = self.audit.append(DecisionRecord {
@@ -297,6 +303,7 @@ impl ModuleExecutor {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn execute(
         &mut self,
         loaded: &mut LoadedModule,
@@ -356,7 +363,8 @@ impl ModuleExecutor {
                     maybe_sandbox = Some(s);
                 }
                 Err(e) => {
-                    let reason = format!("Sandbox provisioning failed: {e}. Isolation is mandatory.");
+                    let reason =
+                        format!("Sandbox provisioning failed: {e}. Isolation is mandatory.");
                     self.record_failure(&loaded.info.name, target, &reason, context);
                     self.stage = GeeStage::Request;
                     return Err(ExecutorError::Sandbox(reason));
@@ -370,7 +378,10 @@ impl ModuleExecutor {
             || (self.tier.requires_explicit_approval());
         if needs_approval && !approved {
             let reason = if matches!(decision, PolicyDecision::RequireApproval(_)) {
-                format!("policy requires approval for {} on {}", loaded.info.name, target)
+                format!(
+                    "policy requires approval for {} on {}",
+                    loaded.info.name, target
+                )
             } else {
                 format!(
                     "operational tier {} requires explicit operator approval",
@@ -412,7 +423,8 @@ impl ModuleExecutor {
                     self.transition_to(GeeStage::Audit);
                     self.transition_to(GeeStage::Validate);
                     self.transition_to(GeeStage::Destroy);
-                    self.teardown_sandbox(&mut maybe_sandbox, &loaded.info.name, target, job_id).await;
+                    self.teardown_sandbox(&mut maybe_sandbox, &loaded.info.name, target, job_id)
+                        .await;
                     self.stage = GeeStage::Request;
                     return Ok(ModuleResult {
                         success: false,
@@ -425,7 +437,8 @@ impl ModuleExecutor {
         }
 
         let result = if let Some(ref sandbox) = maybe_sandbox {
-            self.run_in_sandbox(sandbox, loaded, target, context).await?
+            self.run_in_sandbox(sandbox, loaded, target, context)
+                .await?
         } else {
             match loaded.module.run().await {
                 Ok(r) => r,
@@ -440,7 +453,8 @@ impl ModuleExecutor {
                     self.transition_to(GeeStage::Audit);
                     self.transition_to(GeeStage::Validate);
                     self.transition_to(GeeStage::Destroy);
-                    self.teardown_sandbox(&mut maybe_sandbox, &loaded.info.name, target, job_id).await;
+                    self.teardown_sandbox(&mut maybe_sandbox, &loaded.info.name, target, job_id)
+                        .await;
                     self.stage = GeeStage::Request;
                     return Err(ExecutorError::Module(e));
                 }
@@ -465,7 +479,8 @@ impl ModuleExecutor {
             self.transition_to(GeeStage::Audit);
             self.transition_to(GeeStage::Validate);
             self.transition_to(GeeStage::Destroy);
-            self.teardown_sandbox(&mut maybe_sandbox, &loaded.info.name, target, job_id).await;
+            self.teardown_sandbox(&mut maybe_sandbox, &loaded.info.name, target, job_id)
+                .await;
             self.stage = GeeStage::Request;
             return Ok(blocked);
         }
@@ -482,14 +497,23 @@ impl ModuleExecutor {
             let reason = "audit chain integrity check failed during Validate stage".to_string();
             self.record_failure(&loaded.info.name, target, &reason, context);
             self.transition_to(GeeStage::Destroy);
-            self.teardown_sandbox(&mut maybe_sandbox, &loaded.info.name, target, job_id).await;
+            self.teardown_sandbox(&mut maybe_sandbox, &loaded.info.name, target, job_id)
+                .await;
             self.stage = GeeStage::Request;
             return Err(ExecutorError::Sandbox(reason));
         }
         // 8b. Evidence consistency: ids must have monotonically increasing timestamps
         for w in self.evidence.windows(2) {
-            let ts_a = w[0].id.split('-').next().and_then(|s| s.parse::<u64>().ok());
-            let ts_b = w[1].id.split('-').next().and_then(|s| s.parse::<u64>().ok());
+            let ts_a = w[0]
+                .id
+                .split('-')
+                .next()
+                .and_then(|s| s.parse::<u64>().ok());
+            let ts_b = w[1]
+                .id
+                .split('-')
+                .next()
+                .and_then(|s| s.parse::<u64>().ok());
             match (ts_a, ts_b) {
                 (Some(a), Some(b)) if a > b => {
                     let reason = format!(
@@ -519,7 +543,8 @@ impl ModuleExecutor {
 
         // ── 9. Destroy ───────────────────────────────────────────
         self.transition_to(GeeStage::Destroy);
-        self.teardown_sandbox(&mut maybe_sandbox, &loaded.info.name, target, job_id).await;
+        self.teardown_sandbox(&mut maybe_sandbox, &loaded.info.name, target, job_id)
+            .await;
 
         // Reset for next execution
         self.stage = GeeStage::Request;
@@ -545,13 +570,8 @@ impl ModuleExecutor {
             if !logs.is_empty() {
                 let seq_start = self.evidence.len();
                 for (i, line) in logs.iter().enumerate() {
-                    self.evidence.push(Evidence::new(
-                        module,
-                        target,
-                        line,
-                        job_id,
-                        seq_start + i,
-                    ));
+                    self.evidence
+                        .push(Evidence::new(module, target, line, job_id, seq_start + i));
                 }
             }
         }
@@ -696,8 +716,14 @@ mod tests {
         assert!(result.is_ok(), "in-scope approved low-risk run must pass");
         // After a successful lifecycle, stage must reset to Request for re-entry.
         assert_eq!(exec.stage, GeeStage::Request);
-        assert!(!exec.audit.is_empty(), "every execution leaves an audit trail");
-        assert!(exec.verify_audit(), "audit chain must verify after lifecycle");
+        assert!(
+            !exec.audit.is_empty(),
+            "every execution leaves an audit trail"
+        );
+        assert!(
+            exec.verify_audit(),
+            "audit chain must verify after lifecycle"
+        );
     }
 
     #[tokio::test]

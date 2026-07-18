@@ -491,10 +491,7 @@ async fn full_traceability_chain() {
     }
 
     let decs = g.executor.decisions();
-    assert!(
-        !decs.is_empty(),
-        "at least one decision must be recorded"
-    );
+    assert!(!decs.is_empty(), "at least one decision must be recorded");
     let last_decision = decs.last().unwrap();
     assert!(matches!(&last_decision.decision, PolicyDecision::Allow));
     assert_eq!(last_decision.target, target);

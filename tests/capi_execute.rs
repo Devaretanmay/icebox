@@ -18,13 +18,19 @@ async fn test_governed_execution_through_capi_path() {
         target: "127.0.0.1".into(),
         capabilities: vec![Capability::NetworkScan],
         impact: RiskLevel::Low,
-        options: [("host".into(), "127.0.0.1".into()), ("ports".into(), "1".into())].into(),
+        options: [
+            ("host".into(), "127.0.0.1".into()),
+            ("ports".into(), "1".into()),
+        ]
+        .into(),
         ..Default::default()
     };
 
-    let outcome = rt.execute(task, || async {
-        Ok(json!({"success": true, "open_ports": []}))
-    }).await;
+    let outcome = rt
+        .execute(task, || async {
+            Ok(json!({"success": true, "open_ports": []}))
+        })
+        .await;
 
     match outcome {
         icebox::core::sdk::GovernedOutcome::Allowed { result, .. } => {

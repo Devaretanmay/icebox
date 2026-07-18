@@ -413,7 +413,9 @@ impl std::str::FromStr for PolicyDecision {
         match s {
             "allow" => Ok(PolicyDecision::Allow),
             "deny" => Ok(PolicyDecision::Deny("recorded as denied".into())),
-            "require_approval" => Ok(PolicyDecision::RequireApproval("recorded as requiring approval".into())),
+            "require_approval" => Ok(PolicyDecision::RequireApproval(
+                "recorded as requiring approval".into(),
+            )),
             other => Err(format!("unknown policy decision: {other}")),
         }
     }

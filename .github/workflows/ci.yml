@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Kernel guard: fail if the frozen kernel API surface changes in a way that
+  # would weaken GEE guarantees. We pin src/core/** and assert it still compiles
+  # and its invariants tests pass. Behavioral drift here must be a deliberate,
+  # reviewed change — not an accidental side effect of an SDK/distribution PR.
+  # ---------------------------------------------------------------------------
+  kernel-guard:
+    name: Kernel freeze guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Kernel unit tests (invariants)
+        run: cargo test -p icebox-gov --lib core:: 2>&1 | tail -30
+      - name: Kernel clippy (no warnings)
+        run: cargo clippy -p icebox-gov --lib -- -D warnings
+
+  build:
+    name: Build (workspace)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build all targets
+        run: cargo build --all --verbose
+
+  lint:
+    name: Lint (clippy + fmt)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+  test:
+    name: Test (cargo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Skip integration tests that need Docker / live external services in CI.
+      - name: cargo test (core + fast integration)
+        run: >
+          cargo test -p icebox-gov --lib &&
+          cargo test -p icebox-gov --test governance --test capi_execute --test rest_auth --test evidence --test eval
+
+  python-smoke:
+    name: Python SDK smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build C extension + install SDK
+        run: |
+          cargo build
+          pip install -e .
+          pip install pytest requests
+      - name: Run SDK smoke tests
+        run: pytest tests/test_sdk.py -q

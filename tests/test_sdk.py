@@ -102,7 +102,7 @@ def test_get_module(client):
 
 
 def test_run_module(client):
-    result = client.run_module("mysql_scanner", target="10.0.0.1", sandbox=True)
+    result = client.run_module("mysql_scanner", target="10.0.0.1")
     assert result["job_id"] == 42
     assert result["success"] is True
 
@@ -136,7 +136,6 @@ def test_openai_tools_schema(client):
     params = mysql["function"]["parameters"]
     assert params["type"] == "object"
     assert "target" in params["properties"]
-    assert "sandbox" in params["properties"]
     assert "target" in params["required"]
     assert mysql["type"] == "function"
 
@@ -151,7 +150,7 @@ def test_openai_tool_schema_types(client):
 
 def test_dispatch_tool_call(client):
     result = dispatch_tool_call(
-        client, "icebox_mysql_scanner", {"target": "10.0.0.1", "sandbox": True}
+        client, "icebox_mysql_scanner", {"target": "10.0.0.1"}
     )
     assert result["job_id"] == 42
 

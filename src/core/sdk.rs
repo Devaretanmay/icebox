@@ -277,7 +277,10 @@ impl GovernanceRuntime {
         };
         st.audit.append(rec.clone());
         let _ = st.audit_tx.send(rec);
-        GovernedOutcome::Allowed { result, decision_id }
+        GovernedOutcome::Allowed {
+            result,
+            decision_id,
+        }
     }
 
     pub async fn run<F, Fut>(&self, task: TaskSpec, action: F) -> GovernedOutcome

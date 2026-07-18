@@ -26,7 +26,10 @@ pub struct AuditEntry {
 
 impl AuditEntry {
     pub fn new(seq: u64, prev_hash: &str, record: DecisionRecord) -> Self {
-        let payload = format!("{prev_hash}|{}", serde_json::to_string(&record).unwrap_or_default());
+        let payload = format!(
+            "{prev_hash}|{}",
+            serde_json::to_string(&record).unwrap_or_default()
+        );
         let hash = digest(payload.as_bytes());
         AuditEntry {
             seq,
@@ -94,7 +97,10 @@ impl HashChain {
     pub fn recent(&self, n: usize) -> Vec<DecisionRecord> {
         let end = self.entries.len();
         let start = end.saturating_sub(n);
-        self.entries[start..].iter().map(|e| e.record.clone()).collect()
+        self.entries[start..]
+            .iter()
+            .map(|e| e.record.clone())
+            .collect()
     }
 
     /// Hex-encoded SHA-256 hash of the latest entry in the chain.
@@ -123,8 +129,7 @@ impl HashChain {
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), String> {
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| format!("audit serialization failed: {e}"))?;
-        std::fs::write(path.as_ref(), json)
-            .map_err(|e| format!("audit write failed: {e}"))
+        std::fs::write(path.as_ref(), json).map_err(|e| format!("audit write failed: {e}"))
     }
 
     /// Restore a chain from a JSON file on disk. Returns an empty chain if
@@ -241,7 +246,11 @@ mod tests {
         let loaded = HashChain::load(&path).expect("load must succeed");
         assert_eq!(loaded.len(), 5);
         assert!(loaded.verify(), "restored chain must still verify");
-        assert_eq!(loaded.tip_hex(), c.tip_hex(), "tip must match after roundtrip");
+        assert_eq!(
+            loaded.tip_hex(),
+            c.tip_hex(),
+            "tip must match after roundtrip"
+        );
         assert_eq!(loaded.records().len(), c.records().len());
 
         let _ = std::fs::remove_file(&path);

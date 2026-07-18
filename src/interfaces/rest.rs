@@ -1191,6 +1191,8 @@ async fn record_handler(
             return Err(StatusCode::BAD_REQUEST);
         }
     };
-    let result = guard.executor.record_action(&payload.0, payload.1, decision);
+    let result = guard
+        .executor
+        .record_action(&payload.0, payload.1, decision);
     Ok(Json(result))
 }
