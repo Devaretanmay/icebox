@@ -64,6 +64,9 @@ Run the daemon / REPL:
 # Verify the daemon
 ./target/release/icebox-daemon --version
 
+# Verify the Python wizard (after `pip install icebox-sdk`)
+icebox --help
+
 # Verify the SDK (source build)
-python -c "from icebox import Governance; print('ok')"
+python -c "from icebox import Governance, govern; print('ok')"
 ```

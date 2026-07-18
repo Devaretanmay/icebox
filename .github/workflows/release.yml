@@ -1,18 +1,16 @@
-# Release workflow — scaffold for Phase 4 (distribution).
+# Release workflow — distribution (Phase 4).
 #
-# Publishing is intentionally DISABLED until the distribution phase lands the
-# real publish steps (crates.io / PyPI / GHCR / GitHub Releases). This workflow
-# currently only validates that a `v*` tag builds and tests cleanly, so every
-# future tagged release passes through the same gate as CI.
+# Triggered by pushing a `v*` tag. Builds binaries + Docker image and publishes
+# to crates.io / PyPI / GHCR, then creates a GitHub Release with the binaries.
 #
-# When distribution is wired (Phase 4), add jobs here for:
-#   - cargo publish  (icebox-gov)         [needs CARGO_REGISTRY_TOKEN]
-#   - pypi publish   (icebox-sdk)         [needs PYPI_TOKEN]
-#   - docker build+push to ghcr.io/devaretanmay/icebox [needs GHCR_PAT]
-#   - GitHub Release with linux/macos/windows binaries
+# Secrets required (repo Settings > Secrets, never committed):
+#   CARGO_REGISTRY_TOKEN  — crates.io API token (`cargo login`)
+#   PYPI_API_TOKEN        — PyPI API token (username __token__)
+#   GITHUB_TOKEN          — provided automatically; needs `contents: write`
+#   (GHCR push uses GITHUB_TOKEN)
 #
-# Secrets required (add in repo Settings > Secrets before enabling publish):
-#   CARGO_REGISTRY_TOKEN, PYPI_TOKEN, GHCR_PAT
+# NOTE: rotate CARGO_REGISTRY_TOKEN / PYPI_API_TOKEN before the first real
+# release if they were ever shared in chat. See .github/RELEASE_PROCESS.md.
 
 name: Release
 
@@ -23,10 +21,14 @@ on:
 
 permissions:
   contents: write
+  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  verify-tag:
-    name: Verify release tag builds & tests
+  verify:
+    name: Verify release builds & tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,14 +36,111 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
-      - name: fmt + clippy
-        run: cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings
-      - name: test
-        run: cargo test -p icebox-gov --lib
-      - name: confirm tag is a kernel freeze or product release
+      - run: cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings
+      - run: cargo test -p icebox-gov --lib
+
+  binaries:
+    name: Build binaries (${{ matrix.os }})
+    needs: verify
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Build daemon binary
+        run: cargo build --release --bin icebox-daemon --target ${{ matrix.target }}
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: icebox-daemon-${{ matrix.target }}
+          path: |
+            target/${{ matrix.target }}/release/icebox-daemon
+            target/${{ matrix.target }}/release/icebox-daemon.exe
+          if-no-files: ignore
+
+  crates:
+    name: Publish to crates.io
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Publish icebox-macro first (dependency)
+        run: cargo publish -p icebox-macro --token ${CARGO_REGISTRY_TOKEN}
+        continue-on-error: true # already published versions are non-fatal
+      - name: Publish icebox-gov
+        run: cargo publish -p icebox-gov --token ${CARGO_REGISTRY_TOKEN}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  pypi:
+    name: Publish to PyPI
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel
         run: |
-          echo "Releasing ${GITHUB_REF_NAME}"
-          # Kernel is frozen; any tag that is not a documented release is a mistake.
-          if [[ "${GITHUB_REF_NAME}" =~ ^v0\.2\.5-kernel-complete$ ]]; then
-            echo "Frozen-kernel baseline tag — no publish expected."
-          fi
+          pip install maturin
+          maturin build --release --out dist_release
+      - name: Publish
+        run: |
+          pip install twine
+          twine upload --username __token__ --password ${{ secrets.PYPI_API_TOKEN }} dist_release/*
+
+  docker:
+    name: Push Docker image to GHCR
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/devaretanmay/icebox:latest
+            ghcr.io/devaretanmay/icebox:${{ github.ref_name }}
+
+  github-release:
+    name: Create GitHub Release
+    needs: [binaries, crates, pypi, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Stage binaries
+        run: |
+          mkdir -p release_bins
+          find artifacts -type f \( -name 'icebox-daemon' -o -name 'icebox-daemon.exe' \) -exec cp {} release_bins/ \;
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release_bins/*
+          generate_release_notes: true

@@ -12,6 +12,6 @@ class Icebox < Formula
   end
 
   test do
-    system "#{bin}/icebox", "--version"
+    system "#{bin}/icebox-daemon", "--version"
   end
 end

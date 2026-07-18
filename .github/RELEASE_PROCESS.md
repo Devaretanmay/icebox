@@ -17,7 +17,7 @@ small: distribution should be something anyone can run.
 
 1. Bump `version` in `Cargo.toml` and `python/pyproject.toml` (keep
    them in sync).
-2. Commit and tag: `git tag v0.1.0 && git push origin v0.1.0`.
+2. Commit and tag: `git tag v0.2.5 && git push origin v0.2.5`.
 3. The `release.yml` workflow builds binaries, the Docker image, and
    publishes to crates.io + PyPI, then creates the GitHub Release with
    all assets.

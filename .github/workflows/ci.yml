@@ -27,7 +27,7 @@ jobs:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: Kernel unit tests (invariants)
-        run: cargo test -p icebox-gov --lib core:: 2>&1 | tail -30
+        run: "cargo test -p icebox-gov --lib core:: 2>&1 | tail -30"
       - name: Kernel clippy (no warnings)
         run: cargo clippy -p icebox-gov --lib -- -D warnings
 

@@ -9,8 +9,8 @@ RUN mkdir -p crates/icebox-macro/src \
     && rm -rf target/release/.fingerprint/icebox-* target/release/deps/icebox-*
 COPY . .
 RUN cargo build --release \
-    && strip target/release/icebox \
-    && cp target/release/icebox /usr/local/bin/icebox
+    && strip target/release/icebox-daemon \
+    && cp target/release/icebox-daemon /usr/local/bin/icebox
 FROM gcr.io/distroless/base-debian12:nonroot
 COPY --from=build /usr/local/bin/icebox /usr/local/bin/icebox
 WORKDIR /data
