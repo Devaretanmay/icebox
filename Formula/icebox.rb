@@ -1,7 +1,7 @@
 class Icebox < Formula
   desc "Runtime governance for autonomous offensive security"
   homepage "https://github.com/Devaretanmay/icebox"
-  url "https://github.com/Devaretanmay/icebox/archive/refs/tags/v0.1.0.tar.gz"
+  url "https://github.com/Devaretanmay/icebox/archive/refs/tags/v0.2.6.tar.gz"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
   license "MIT"
 
