@@ -1,0 +1,8 @@
+target
+test-venv
+dist
+*.whl
+.git
+docs
+python/tests
+**/tests

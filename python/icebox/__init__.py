@@ -51,4 +51,4 @@ class Workspace:
             self.client.unbind_proxy(local_port)
 
 __all__ = ["Governance", "GovernClient", "IceboxClient", "IceboxError", "Workspace", "govern", "GovernedSession"]
-__version__ = "0.2.6"
+__version__ = "0.2.7"
