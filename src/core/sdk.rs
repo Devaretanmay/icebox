@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::{broadcast, Mutex};
 
+use crate::core::audit::HashChain;
 use crate::core::executor::ModuleExecutor;
 use crate::core::governance::{ApprovalQueue, ApprovalRequest, ApprovalStatus, Role};
 use crate::core::module::{Capability, Intent};
@@ -12,6 +13,43 @@ use crate::core::safety::{
     now_secs, Charter, ConfigPolicy, CvssScore, DecisionRecord, PolicyContext, PolicyDecision,
     PolicyEngine, PolicyRequest, PolicyRule, PolicySet, RiskLevel, ScopeManager,
 };
+
+/// An action to be governed by ICEBOX — the "Stripe-style" request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GovernAction {
+    pub action: String,
+    pub target: String,
+    pub capability: String,
+    pub impact: RiskLevel,
+    pub destructive: bool,
+    #[serde(default)]
+    pub metadata: HashMap<String, String>,
+}
+
+/// Decision returned after running an action through the GEE lifecycle.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GovernResult {
+    pub approved: bool,
+    pub decision: String,
+    pub reason: Option<String>,
+    pub decision_id: u64,
+    pub chain_tip: String,
+}
+
+/// Outcome of executing an action outside ICEBOX, to be recorded.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionOutcome {
+    pub success: bool,
+    pub evidence: Vec<String>,
+    pub data: serde_json::Value,
+}
+
+/// Result after recording an action outcome into the audit chain.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecordResult {
+    pub decision_id: u64,
+    pub chain_tip: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskSpec {
@@ -102,7 +140,7 @@ struct RateState {
 #[derive(Debug)]
 struct RuntimeState {
     config: GovernanceConfig,
-    decisions: Vec<DecisionRecord>,
+    audit: HashChain,
     approvals: ApprovalQueue,
     rate: HashMap<String, RateState>,
     audit_tx: broadcast::Sender<DecisionRecord>,
@@ -181,6 +219,100 @@ impl GovernanceRuntime {
         }
     }
 
+    /// Evaluate policy and record the decision without running the action.
+    /// Returns Allowed (with null result), Blocked, or NeedsApproval.
+    /// The caller runs the action only when Allowed, then calls `complete()`.
+    pub async fn preflight(&self, task: TaskSpec) -> GovernedOutcome {
+        let mut st = self.state.lock().await;
+
+        if let Some(reason) = st.check_rate_limit(&task.name) {
+            return st.record_and_block(task, reason);
+        }
+
+        let approved = task.approved;
+        let req = PolicyRequest {
+            target: task.target.clone(),
+            capabilities: task.capabilities.clone(),
+            impact: task.impact,
+            destructive: task.destructive,
+            charter_accepted: st.config.charter.accepted,
+            in_scope: st.config.scope.is_in_scope(&task.target),
+            approved,
+            context: task.context,
+            cvss: None,
+        };
+        let policy = ConfigPolicy {
+            max_risk: st.config.policy_set.max_risk(st.config.max_risk),
+            context: task.context,
+            rules: st.config.policy_set.clone(),
+        };
+        let decision = policy.evaluate(&req);
+        let decision_id = st.next_decision_id;
+        st.next_decision_id += 1;
+        let rec = DecisionRecord {
+            at: now_secs(),
+            target: task.target.clone(),
+            module: task.name.clone(),
+            capabilities: task.capabilities.clone(),
+            intents: derive_intents(&task.capabilities),
+            impact: task.impact,
+            context: task.context,
+            decision: decision.clone(),
+        };
+        st.audit.append(rec.clone());
+        let _ = st.audit_tx.send(rec);
+
+        match decision {
+            PolicyDecision::Deny(reason) => GovernedOutcome::Blocked {
+                reason,
+                decision_id,
+            },
+            PolicyDecision::RequireApproval(reason) if !approved => {
+                let approval_id = st.approvals.request(
+                    task.name.clone(),
+                    task.target.clone(),
+                    reason.clone(),
+                    task.options.clone(),
+                );
+                GovernedOutcome::NeedsApproval {
+                    reason,
+                    decision_id,
+                    approval_id,
+                }
+            }
+            _ => GovernedOutcome::Allowed {
+                result: Value::Null,
+                decision_id,
+            },
+        }
+    }
+
+    /// Record that a preflighted action completed successfully.
+    /// Creates a new audit entry linked to the preflight decision.
+    pub async fn complete(
+        &self,
+        task: TaskSpec,
+        result: Value,
+    ) -> GovernedOutcome {
+        let mut st = self.state.lock().await;
+        let intents = derive_intents(&task.capabilities);
+        let decision_id = st.next_decision_id;
+        st.next_decision_id += 1;
+        let rec = DecisionRecord {
+            at: now_secs(),
+            target: task.target,
+            module: task.name,
+            capabilities: task.capabilities,
+            intents,
+            impact: task.impact,
+            context: task.context,
+            decision: PolicyDecision::Allow,
+        };
+        st.audit.append(rec.clone());
+        let _ = st.audit_tx.send(rec);
+        GovernedOutcome::Allowed { result, decision_id }
+    }
+
     pub async fn run<F, Fut>(&self, task: TaskSpec, action: F) -> GovernedOutcome
     where
         F: FnOnce() -> Fut,
@@ -235,7 +367,7 @@ impl GovernanceRuntime {
             context: task.context,
             decision: decision.clone(),
         };
-        st.decisions.push(rec.clone());
+        st.audit.append(rec.clone());
         let _ = st.audit_tx.send(rec);
 
         match decision {
@@ -292,16 +424,16 @@ impl GovernanceRuntime {
     }
 
     pub async fn audit(&self) -> Vec<DecisionRecord> {
-        self.state.lock().await.decisions.clone()
+        self.state.lock().await.audit.records()
     }
 
     pub async fn export_audit_json(&self) -> String {
-        let d = self.state.lock().await.decisions.clone();
+        let d = self.state.lock().await.audit.records();
         serde_json::to_string_pretty(&d).unwrap_or_else(|_| "[]".into())
     }
 
     pub async fn export_audit_csv(&self) -> String {
-        let d = self.state.lock().await.decisions.clone();
+        let d = self.state.lock().await.audit.records();
         crate::core::governance::audit_to_csv(&d)
     }
 
@@ -340,7 +472,7 @@ impl RuntimeState {
             context: task.context,
             decision: PolicyDecision::Deny(reason.clone()),
         };
-        self.decisions.push(rec.clone());
+        self.audit.append(rec.clone());
         let _ = self.audit_tx.send(rec);
         GovernedOutcome::Blocked {
             reason,
@@ -354,7 +486,7 @@ pub fn govern(config: GovernanceConfig) -> GovernanceRuntime {
     GovernanceRuntime {
         state: Arc::new(Mutex::new(RuntimeState {
             config,
-            decisions: Vec::new(),
+            audit: HashChain::new(),
             approvals: ApprovalQueue::default(),
             rate: HashMap::new(),
             audit_tx,

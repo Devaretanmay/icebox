@@ -7,6 +7,12 @@ pub use safety::*;
 pub mod executor;
 pub use executor::*;
 
+pub mod gee;
+pub use gee::*;
+
+pub mod audit;
+pub use audit::*;
+
 pub mod session;
 pub use session::*;
 

@@ -12,7 +12,8 @@ use icebox::core::governance::{audit_to_csv, role_allows, PolicyPack, Role};
 use icebox::core::job::Job;
 use icebox::core::module::LoadedModule;
 use icebox::core::safety::{
-    Charter, PolicyContext, PolicyDecision, PolicyEngine, PolicyRule, RiskLevel, ScopeManager,
+    Charter, PolicyContext, PolicyDecision, PolicyEngine, PolicyRule, PolicySet, RiskLevel,
+    ScopeManager,
 };
 use icebox::core::session::{Session, SessionId, SessionKind};
 use icebox::core::Capability;
@@ -111,6 +112,19 @@ async fn main() -> anyhow::Result<()> {
         ScopeManager::default(),
         RiskLevel::Critical,
     ));
+    if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
+        let auto_path = std::path::Path::new(&home).join(".icebox/policy.yaml");
+        if auto_path.exists() {
+            match PolicySet::load_yaml(&auto_path) {
+                Ok(policy) => {
+                    let mut lock = fw.blocking_lock();
+                    lock.executor.policy_set = policy;
+                    eprintln!("auto-loaded policy from {}", auto_path.display());
+                }
+                Err(e) => eprintln!("warn: failed to load {}: {e}", auto_path.display()),
+            }
+        }
+    }
     let state = Arc::new(Mutex::new(CliState {
         fw: fw.clone(),
         loaded: None,
@@ -746,11 +760,30 @@ async fn cmd_policy(a: &[&str], s: &CliState, fw: &mut Framework) {
             cmd_policy_remove(&a[2..], fw);
             return;
         }
+        Some("load") => {
+            let path = a.get(1).copied().unwrap_or("");
+            if path.is_empty() {
+                println!("usage: policy load <path/to/policy.yaml>");
+                return;
+            }
+            match PolicySet::load_yaml(path) {
+                Ok(policy) => {
+                    let version = policy.version;
+                    fw.executor.policy_set = policy;
+                    println!("policy loaded from {path} (version {version}):");
+                    for (i, r) in fw.executor.policy_set.rules.iter().enumerate() {
+                        println!("  [{}] {}", i, policy_rule_str(r));
+                    }
+                }
+                Err(e) => println!("error: {e}"),
+            }
+            return;
+        }
         _ => {}
     }
     let module = a.first().copied().unwrap_or("").to_string();
     if module.is_empty() {
-        println!("usage: policy <module> [target] | policy rules | policy rule add <deny|allow|maxrisk> <capability|level> | policy rule remove <index>");
+        println!("usage: policy <module> [target] | policy rules | policy rule add <deny|allow|maxrisk|deny_cvss|deny_payload|approval_if> ... | policy rule remove <index> | policy load <file.yaml>");
         return;
     }
     let target = a

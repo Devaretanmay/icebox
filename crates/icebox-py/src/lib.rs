@@ -5,11 +5,13 @@ use tokio::runtime::Runtime;
 use icebox::core::executor::ModuleExecutor;
 use icebox::core::framework::{new_shared_framework, SharedFramework};
 use icebox::core::safety::{Charter, PolicyContext, RiskLevel, ScopeManager};
+use icebox::core::sdk::{govern, GovernanceConfig, GovernanceRuntime, TaskSpec};
 
 #[pyclass]
 struct NativeIcebox {
     rt: Runtime,
     fw: SharedFramework,
+    gov: GovernanceRuntime,
 }
 
 #[pymethods]
@@ -27,10 +29,17 @@ impl NativeIcebox {
             Some("high") => RiskLevel::High,
             _ => RiskLevel::Critical,
         };
-        let executor =
-            ModuleExecutor::new(charter, ScopeManager::new(scopes.unwrap_or_default()), risk);
+        let scope_mgr = ScopeManager::new(scopes.clone().unwrap_or_default());
+        let executor = ModuleExecutor::new(charter.clone(), scope_mgr, risk);
         let fw = new_shared_framework(executor);
-        Ok(NativeIcebox { rt, fw })
+        let cfg = GovernanceConfig {
+            charter,
+            scope: ScopeManager::new(scopes.unwrap_or_default()),
+            max_risk: risk,
+            ..Default::default()
+        };
+        let gov = govern(cfg);
+        Ok(NativeIcebox { rt, fw, gov })
     }
 
     #[pyo3(signature = (name, target, sandbox=false, options=None))]
@@ -102,6 +111,26 @@ impl NativeIcebox {
         })?;
 
         Ok(result_json)
+    }
+
+    #[pyo3(signature = (task_json))]
+    fn preflight_action(&self, task_json: String) -> PyResult<String> {
+        let task: TaskSpec = serde_json::from_str(&task_json)
+            .map_err(|e| PyRuntimeError::new_err(format!("invalid task: {e}")))?;
+        let outcome = self.rt.block_on(self.gov.preflight(task));
+        serde_json::to_string(&outcome)
+            .map_err(|e| PyRuntimeError::new_err(format!("serialize: {e}")))
+    }
+
+    #[pyo3(signature = (task_json, result_json))]
+    fn complete_action(&self, task_json: String, result_json: String) -> PyResult<String> {
+        let task: TaskSpec = serde_json::from_str(&task_json)
+            .map_err(|e| PyRuntimeError::new_err(format!("invalid task: {e}")))?;
+        let result: serde_json::Value = serde_json::from_str(&result_json)
+            .map_err(|e| PyRuntimeError::new_err(format!("invalid result: {e}")))?;
+        let outcome = self.rt.block_on(self.gov.complete(task, result));
+        serde_json::to_string(&outcome)
+            .map_err(|e| PyRuntimeError::new_err(format!("serialize: {e}")))
     }
 }
 

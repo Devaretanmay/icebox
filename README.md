@@ -1,9 +1,9 @@
 <div align="center">
   <img src="assets/icebox-logo-dark.svg" alt="ICEBOX Logo" width="450" />
 
-  **ICEBOX: The runtime governance layer for autonomous security.**
-  
-  <br />
+   **ICEBOX: Governed Execution for autonomous security.**
+   
+   <br />
 
   [![Crates.io](https://img.shields.io/crates/v/icebox-gov?style=flat-square)](https://crates.io/crates/icebox-gov)
   [![PyPI](https://img.shields.io/pypi/v/icebox-sdk?style=flat-square)](https://pypi.org/project/icebox-sdk/)
@@ -14,7 +14,7 @@
 
 Welcome, let's get your ICEBOX environment set up.
 
-ICEBOX is the runtime governance layer for autonomous security agents and offensive security tooling. It gives every human operator, REST client, and autonomous agent a single, auditable choke point — the **governance seam** — that must be passed before any action is taken against an authorized target.
+ICEBOX executes every action inside a **Governed Execution Environment (GEE)** — its fundamental execution primitive. A GEE is an ephemeral, policy-checked, isolation-backed environment that every human operator, REST client, and autonomous agent must pass through before any action touches an authorized target. Isolation, policy enforcement, approval gating, evidence collection, audit, and validation are not features bolted onto ICEBOX; they are the lifecycle every action is required to clear.
 
 ### Operational Tiers
 
@@ -53,9 +53,9 @@ built to govern arbitrary tools and agents, not just the ones shipped here.
 
 Before diving in, there are a few core concepts you need to understand about how ICEBOX operates.
 
-### 1. The Governance Seam
+### 1. The Governed Execution Environment (GEE)
 
-ICEBOX enforces governance at exactly one point: `ModuleExecutor::execute()`. Every operator action, REST call, and agent step passes through it — that single choke point is what makes the whole system auditable. There is no way to bypass this seam.
+ICEBOX enforces governance at exactly one point: `ModuleExecutor`, the GEE. Every operator action, REST call, and agent step runs as a GEE that advances through a fixed lifecycle — `request → policy_evaluation → sandbox_proisioning → approval_check → execute → collect_evidence → audit → validate → destroy`. Each stage is a hard gate; the action cannot bypass it, and the terminal stages (audit, validate, destroy) always run even when an earlier stage denies or fails the request. That single mandatory primitive is what makes the whole system auditable.
 
 ### 2. Mandatory Sandboxing
 

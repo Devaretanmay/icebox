@@ -23,6 +23,7 @@ use crate::core::safety::{
     Charter, DecisionRecord, Evidence, MemoryEntry, PolicyContext, PolicyDecision, PolicyEngine,
     PolicyRule, PolicySet, Preflight, ReasoningTrace, RiskLevel,
 };
+use crate::core::sdk::{ActionOutcome, GovernAction, GovernResult, RecordResult};
 use crate::core::session::{Session, SessionId, SessionKind};
 use crate::core::workspace::WorkspaceSnapshot;
 
@@ -285,6 +286,8 @@ pub async fn serve(fw: SharedFramework, addr: SocketAddr, auth: AuthState) -> an
         .route("/api/v1/mode", get(get_mode).post(set_mode))
         .route("/api/v1/proxy/bind", post(bind_proxy))
         .route("/api/v1/proxy/unbind", post(unbind_proxy))
+        .route("/api/v1/govern", post(govern_handler))
+        .route("/api/v1/govern/record", post(record_handler))
         .layer(auth_layer)
         .layer(cors)
         .with_state(fw);
@@ -1170,4 +1173,22 @@ async fn unbind_proxy(
         ok: true,
         error: None,
     })
+}
+
+async fn govern_handler(
+    State(fw): State<SharedFramework>,
+    Json(payload): Json<GovernAction>,
+) -> Json<GovernResult> {
+    let mut guard = fw.lock().await;
+    let result = guard.executor.govern_action(&payload, PolicyContext::Rest);
+    Json(result)
+}
+
+async fn record_handler(
+    State(fw): State<SharedFramework>,
+    Json(payload): Json<(GovernAction, ActionOutcome)>,
+) -> Json<RecordResult> {
+    let mut guard = fw.lock().await;
+    let result = guard.executor.record_action(&payload.0, payload.1);
+    Json(result)
 }

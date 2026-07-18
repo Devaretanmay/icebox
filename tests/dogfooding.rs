@@ -46,7 +46,7 @@ async fn run_through_seam(
     Result<ModuleResult, icebox::core::executor::ExecutorError>,
     usize,
 ) {
-    let decisions_before = fw.lock().await.executor.decisions.len();
+    let decisions_before = fw.lock().await.executor.decisions().len();
     let mut g = fw.lock().await;
     let job = Job::new(&loaded.info.name, target);
     let jid = job.id;
@@ -64,7 +64,7 @@ async fn run_through_seam(
             None,
         )
         .await;
-    let decisions_after = g.executor.decisions.len();
+    let decisions_after = g.executor.decisions().len();
     match &result {
         Ok(r) => {
             g.jobs.complete(jid, r.clone());
@@ -86,7 +86,7 @@ async fn seam_bypass_direct_module_run_skips_policy() {
 
     let g = fw.lock().await;
     assert_eq!(
-        g.executor.decisions.len(),
+        g.executor.decisions().len(),
         0,
         "bypass leaves no audit trail"
     );
@@ -273,7 +273,8 @@ async fn every_execution_is_audited() {
     );
 
     let g = fw.lock().await;
-    let last = g.executor.decisions.last().unwrap();
+    let decs = g.executor.decisions();
+    let last = decs.last().unwrap();
     assert_eq!(last.module, "tcp_port_scanner");
     assert_eq!(last.target, "127.0.0.1");
     assert!(last.capabilities.contains(&Capability::NetworkScan));
@@ -301,7 +302,7 @@ async fn audit_trail_links_decisions_to_evidence_to_preflight() {
     assert!(result.is_ok());
 
     let g = fw.lock().await;
-    let decisions = &g.executor.decisions;
+    let decisions = g.executor.decisions();
     let evidence_records = &g.executor.evidence;
 
     let decision = decisions.last().unwrap();
@@ -346,7 +347,7 @@ async fn denied_decisions_include_reason() {
 
     {
         let mut g = fw.lock().await;
-        g.executor.decisions.push(DecisionRecord {
+        g.executor.append_decision(DecisionRecord {
             at: now_secs(),
             target: "10.0.0.5".into(),
             module: "tcp_port_scanner".into(),
@@ -357,7 +358,8 @@ async fn denied_decisions_include_reason() {
             decision: decision.clone(),
         });
 
-        let recorded = g.executor.decisions.last().unwrap();
+        let decs = g.executor.decisions();
+        let recorded = decs.last().unwrap();
         match &recorded.decision {
             PolicyDecision::Deny(reason) => {
                 assert!(!reason.is_empty(), "denied decision must have a reason");
@@ -489,11 +491,12 @@ async fn full_traceability_chain() {
         assert_eq!(ev.module, "tcp_port_scanner");
     }
 
+    let decs = g.executor.decisions();
     assert!(
-        !g.executor.decisions.is_empty(),
+        !decs.is_empty(),
         "at least one decision must be recorded"
     );
-    let last_decision = &g.executor.decisions.last().unwrap();
+    let last_decision = decs.last().unwrap();
     assert!(matches!(&last_decision.decision, PolicyDecision::Allow));
     assert_eq!(last_decision.target, target);
     assert_eq!(last_decision.module, "tcp_port_scanner");

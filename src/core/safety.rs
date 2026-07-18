@@ -601,6 +601,18 @@ impl PolicySet {
             )
         })
     }
+
+    /// Load policy rules from a YAML file on disk.
+    pub fn load_yaml(path: impl AsRef<std::path::Path>) -> Result<Self, String> {
+        let contents =
+            std::fs::read_to_string(path.as_ref()).map_err(|e| format!("read error: {e}"))?;
+        Self::load_yaml_str(&contents)
+    }
+
+    /// Parse policy rules from a YAML string.
+    pub fn load_yaml_str(s: &str) -> Result<Self, String> {
+        serde_yaml::from_str::<PolicySet>(s).map_err(|e| format!("YAML parse error: {e}"))
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -1,13 +1,16 @@
+use std::str::FromStr;
 use tracing::info;
 
-use crate::core::module::{LoadedModule, ModuleError, ModuleResult};
+use crate::core::audit::HashChain;
+use crate::core::gee::GeeStage;
+use crate::core::module::{Capability, Intent, LoadedModule, ModuleError, ModuleResult};
 use crate::core::safety::{
     make_config_policy, now_secs, Charter, ConfigPolicy, DecisionRecord, Evidence, MemoryEntry,
-    MemoryKind, PolicyContext, PolicyDecision, PolicyEngine, PolicySet, Preflight, PreflightError,
-    ReasoningTrace, RiskLevel, ScopeManager,
+    MemoryKind, PolicyContext, PolicyDecision, PolicyEngine, PolicyRequest, PolicySet, Preflight,
+    PreflightError, ReasoningTrace, RiskLevel, ScopeManager,
 };
+use crate::core::sdk::{ActionOutcome, GovernAction, GovernResult, RecordResult};
 
-const MAX_DECISIONS: usize = 1000;
 const MAX_EVIDENCE: usize = 2000;
 const MAX_TRACES: usize = 1000;
 const MAX_MEMORIES: usize = 1000;
@@ -22,6 +25,11 @@ pub enum ExecutorError {
     Sandbox(String),
 }
 
+/// The execution seam of ICEBOX and its fundamental execution primitive:
+/// every action runs as a Governed Execution Environment (GEE). This type owns
+/// the GEE lifecycle (policy evaluation, sandbox provisioning, approval
+/// gating, execution, evidence collection, audit, validation, and teardown)
+/// and keeps the state required to enforce it.
 #[derive(Debug)]
 pub struct ModuleExecutor {
     pub charter: Charter,
@@ -30,10 +38,11 @@ pub struct ModuleExecutor {
     pub policy_set: PolicySet,
     pub sandbox_required: bool,
     pub tier: crate::core::safety::Tier,
-    pub decisions: Vec<DecisionRecord>,
+    pub audit: HashChain,
     pub evidence: Vec<Evidence>,
     pub traces: Vec<ReasoningTrace>,
     pub memories: Vec<MemoryEntry>,
+    pub stage: GeeStage,
 }
 
 impl ModuleExecutor {
@@ -45,10 +54,11 @@ impl ModuleExecutor {
             policy_set: PolicySet::default(),
             sandbox_required: false,
             tier: crate::core::safety::Tier::Fridge,
-            decisions: Vec::new(),
+            audit: HashChain::new(),
             evidence: Vec::new(),
             traces: Vec::new(),
             memories: Vec::new(),
+            stage: GeeStage::Request,
         }
     }
 
@@ -95,9 +105,139 @@ impl ModuleExecutor {
     }
 
     pub fn recent_decisions(&self, n: usize) -> Vec<DecisionRecord> {
-        let end = self.decisions.len();
-        let start = end.saturating_sub(n);
-        self.decisions[start..].to_vec()
+        self.audit.recent(n)
+    }
+
+    pub fn decisions(&self) -> Vec<DecisionRecord> {
+        self.audit.records()
+    }
+
+    pub fn append_decision(&mut self, record: DecisionRecord) -> u64 {
+        self.audit.append(record)
+    }
+
+    pub fn verify_audit(&self) -> bool {
+        self.audit.verify()
+    }
+
+    pub fn audit_chain(&self) -> &HashChain {
+        &self.audit
+    }
+
+    /// Pure governance check: evaluate policy, scope, and approval gates
+    /// without executing the action. Returns a decision the caller acts upon.
+    /// This is the single-entry "Stripe-style" govern() call.
+    pub fn govern_action(&mut self, action: &GovernAction, context: PolicyContext) -> GovernResult {
+        let capability = match Capability::from_str(&action.capability) {
+            Ok(c) => c,
+            Err(e) => {
+                let decision_id = self.audit.append(DecisionRecord {
+                    at: now_secs(),
+                    target: action.target.clone(),
+                    module: action.action.clone(),
+                    capabilities: vec![],
+                    intents: vec![],
+                    impact: action.impact,
+                    context,
+                    decision: PolicyDecision::Deny(format!("unknown capability: {e}")),
+                });
+                return GovernResult {
+                    approved: false,
+                    decision: "deny".into(),
+                    reason: Some(format!("unknown capability: {}", action.capability)),
+                    decision_id,
+                    chain_tip: self.audit.tip_hex(),
+                };
+            }
+        };
+
+        let in_scope = self.scope.is_in_scope(&action.target);
+
+        let req = PolicyRequest {
+            target: action.target.clone(),
+            capabilities: vec![capability],
+            impact: action.impact,
+            destructive: action.destructive,
+            charter_accepted: self.charter.accepted,
+            in_scope,
+            approved: false,
+            context,
+            cvss: None,
+        };
+
+        let policy = self.policy(context);
+        let decision = policy.evaluate(&req);
+
+        let intents: Vec<Intent> = req.capabilities.iter().map(|c| c.intent()).collect();
+
+        let decision_id = self.audit.append(DecisionRecord {
+            at: now_secs(),
+            target: action.target.clone(),
+            module: action.action.clone(),
+            capabilities: req.capabilities.clone(),
+            intents,
+            impact: action.impact,
+            context,
+            decision: decision.clone(),
+        });
+
+        match decision {
+            PolicyDecision::Deny(reason) => GovernResult {
+                approved: false,
+                decision: "deny".into(),
+                reason: Some(reason),
+                decision_id,
+                chain_tip: self.audit.tip_hex(),
+            },
+            PolicyDecision::RequireApproval(reason) => GovernResult {
+                approved: false,
+                decision: "require_approval".into(),
+                reason: Some(reason),
+                decision_id,
+                chain_tip: self.audit.tip_hex(),
+            },
+            PolicyDecision::Allow => GovernResult {
+                approved: true,
+                decision: "allow".into(),
+                reason: None,
+                decision_id,
+                chain_tip: self.audit.tip_hex(),
+            },
+        }
+    }
+
+    /// Record completion of a prior governed action.
+    /// Appends evidence and an audit-chain entry, then returns the chain tip.
+    pub fn record_action(&mut self, action: &GovernAction, outcome: ActionOutcome) -> RecordResult {
+        for content in &outcome.evidence {
+            let seq = self.evidence.len();
+            self.evidence.push(Evidence::new(
+                &action.action,
+                &action.target,
+                content,
+                None,
+                seq,
+            ));
+        }
+
+        let capability = Capability::from_str(&action.capability).unwrap_or(Capability::NetworkScan);
+        let intents = vec![capability.intent()];
+
+        let decision_id = self.audit.append(DecisionRecord {
+            at: now_secs(),
+            target: action.target.clone(),
+            module: action.action.clone(),
+            capabilities: vec![capability],
+            intents,
+            impact: action.impact,
+            context: PolicyContext::Rest,
+            decision: PolicyDecision::Allow,
+        });
+
+        RecordResult {
+            decision_id,
+            chain_tip: self.audit.tip_hex(),
+        }
     }
 
     pub fn recent_evidence(&self, n: usize) -> Vec<Evidence> {
@@ -114,7 +254,6 @@ impl ModuleExecutor {
         approved: bool,
         context: PolicyContext,
     ) -> Preflight {
-        use crate::core::module::Intent;
         let destructive = destructive_override
             .unwrap_or_else(|| loaded.info.effective_intents().contains(&Intent::Modify));
 
@@ -144,6 +283,7 @@ impl ModuleExecutor {
         sandbox: bool,
         engine: Option<crate::core::sandbox::SandboxEngineType>,
     ) -> Result<ModuleResult, ExecutorError> {
+        self.stage = GeeStage::PolicyEvaluation;
         let pf = self
             .preflight(loaded, target, destructive_override, approved, context)
             .await;
@@ -152,6 +292,18 @@ impl ModuleExecutor {
         self.record_decision(&loaded.info.name, &pf, &decision);
         pf.check(&policy)?;
 
+        self.stage = GeeStage::ScopeEnforcement;
+        if !self.scope.is_in_scope(target) {
+            let reason = format!("target {target} is out of scope");
+            self.record_decision(
+                &loaded.info.name,
+                &pf,
+                &PolicyDecision::Deny(reason.clone()),
+            );
+            return Err(ExecutorError::Preflight(PreflightError::Denied(reason)));
+        }
+
+        self.stage = GeeStage::SandboxProvisioning;
         if (self.sandbox_required || self.tier.requires_sandbox()) && !sandbox {
             let reason = format!("operational tier {} requires sandbox isolation", self.tier);
             self.record_decision(
@@ -162,6 +314,7 @@ impl ModuleExecutor {
             return Err(ExecutorError::Preflight(PreflightError::Denied(reason)));
         }
 
+        self.stage = GeeStage::ApprovalCheck;
         if self.tier.requires_explicit_approval() && !approved {
             let reason = format!(
                 "operational tier {} requires explicit operator approval",
@@ -175,13 +328,15 @@ impl ModuleExecutor {
             return Err(ExecutorError::Preflight(PreflightError::ApprovalRequired));
         }
 
+        self.stage = GeeStage::Execute;
         info!(
             target = %target,
             module = %loaded.info.name,
             risk = %pf.risk.as_str(),
             destructive = pf.destructive,
             sandbox = sandbox,
-            "executor: preflight passed"
+            stage = %self.stage.as_str(),
+            "governed execution: preflight passed"
         );
 
         if policy.has_deny_payload() {
@@ -228,6 +383,7 @@ impl ModuleExecutor {
             }
         };
 
+        self.stage = GeeStage::CollectEvidence;
         let denied = policy.denied_payload(&result);
         if !denied.is_empty() {
             let reason = format!("payload matched denied pattern: {denied}");
@@ -241,10 +397,12 @@ impl ModuleExecutor {
             blocked.evidence.push(format!("[BLOCKED:payload] {denied}"));
             blocked.data = serde_json::Value::Null;
             self.record_evidence(&loaded.info.name, target, &blocked, job_id);
+            self.stage = GeeStage::Audit;
             return Ok(blocked);
         }
 
         self.record_evidence(&loaded.info.name, target, &result, job_id);
+        self.stage = GeeStage::Audit;
         Ok(result)
     }
 
@@ -254,7 +412,7 @@ impl ModuleExecutor {
         pf: &Preflight,
         decision: &crate::core::safety::PolicyDecision,
     ) {
-        self.decisions.push(DecisionRecord {
+        self.audit.append(DecisionRecord {
             at: now_secs(),
             target: pf.target.clone(),
             module: module.to_string(),
@@ -264,10 +422,6 @@ impl ModuleExecutor {
             context: pf.context,
             decision: decision.clone(),
         });
-        let overflow = self.decisions.len().saturating_sub(MAX_DECISIONS);
-        if overflow > 0 {
-            self.decisions.drain(..overflow);
-        }
     }
 
     fn record_evidence(
@@ -292,6 +446,7 @@ impl ModuleExecutor {
             self.evidence.drain(..overflow);
         }
     }
+
     async fn run_sandboxed(
         &mut self,
         loaded: &crate::core::module::LoadedModule,
@@ -306,6 +461,7 @@ impl ModuleExecutor {
             Ok(sandbox) => {
                 info!(
                     container = %sandbox.container_id(),
+                    stage = %GeeStage::SandboxProvisioning.as_str(),
                     "[SANDBOX] container frozen"
                 );
                 let options = loaded.module.options_json();
@@ -349,7 +505,7 @@ impl ModuleExecutor {
     }
 
     fn record_failure(&mut self, module: &str, target: &str, reason: &str, context: PolicyContext) {
-        self.decisions.push(DecisionRecord {
+        self.audit.append(DecisionRecord {
             at: now_secs(),
             target: target.to_string(),
             module: module.to_string(),
@@ -359,9 +515,5 @@ impl ModuleExecutor {
             context,
             decision: PolicyDecision::Deny(reason.to_string()),
         });
-        let overflow = self.decisions.len().saturating_sub(MAX_DECISIONS);
-        if overflow > 0 {
-            self.decisions.drain(..overflow);
-        }
     }
 }

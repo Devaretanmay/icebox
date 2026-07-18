@@ -3,6 +3,7 @@
 Talks directly to the ICEBOX REST API — no native build required.
 """
 
+import functools
 import json
 import os
 import urllib.error
@@ -11,6 +12,18 @@ from typing import Any
 
 
 class IceboxError(Exception):
+    pass
+
+
+class GovernanceError(Exception):
+    pass
+
+
+class ActionBlocked(GovernanceError):
+    pass
+
+
+class NeedsApproval(GovernanceError):
     pass
 
 
@@ -173,6 +186,69 @@ class IceboxClient:
         return tools
 
 
+class GovernClient:
+    """Governance SDK client — the \"Stripe for governed execution\" single-call interface.
+
+    Wraps any autonomous action in a Governed Execution Environment (GEE)
+    with one API call. Every action is policy-evaluated, scope-enforced,
+    approval-gated, audited, and evidence-collected automatically.
+
+    Usage:
+
+        client = GovernClient()
+        result = client.govern({
+            \"action\": \"scan_network\",
+            \"target\": \"10.0.0.0/24\",
+            \"capability\": \"network_scan\",
+            \"impact\": \"low\",
+            \"destructive\": False,
+        })
+        if result[\"approved\"]:
+            # execute the action externally
+            client.record(action, {\"success\": True, \"evidence\": [...], \"data\": {...}})
+    """
+
+    def __init__(self, url: str = "http://127.0.0.1:8443", token: str | None = None):
+        self._base = url.rstrip("/")
+        self._token = token
+
+    def _headers(self) -> dict:
+        headers = {"Content-Type": "application/json"}
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        return headers
+
+    def _post(self, path: str, body: Any) -> Any:
+        data = json.dumps(body).encode()
+        req = urllib.request.Request(
+            self._base + path,
+            data=data,
+            headers=self._headers(),
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                raw = r.read()
+                return json.loads(raw) if raw else None
+        except urllib.error.HTTPError as e:
+            msg = e.read().decode()
+            raise IceboxError(f"HTTP {e.code}: {msg}") from e
+
+    def govern(self, action: dict) -> dict:
+        """Run an action through the full GEE lifecycle.
+
+        Returns a GovernResult with approval decision, reason, and chain tip.
+        """
+        return self._post("/api/v1/govern", action)
+
+    def record(self, action: dict, outcome: dict) -> dict:
+        """Record the outcome of a previously governed action.
+
+        Appends evidence and an audit-chain entry, returns chain tip.
+        """
+        return self._post("/api/v1/govern/record", (action, outcome))
+
+
 class Governance:
     """Natively backed by PyO3 Rust extension."""
 
@@ -242,3 +318,54 @@ class Governance:
             raise IceboxError(f"HTTP {e.code}: {e.read().decode()}") from e
         except Exception:
             return ""
+
+    def check_only(self, task: dict) -> dict:
+        if not self._native:
+            return {"type": "allowed", "decision_id": 0}
+        return json.loads(self._native.preflight_action(json.dumps(task)))
+
+    def record_action(self, task: dict, result: Any) -> dict:
+        if not self._native:
+            return {"type": "allowed", "decision_id": 0}
+        return json.loads(
+            self._native.complete_action(json.dumps(task), json.dumps(result))
+        )
+
+    def governed(self, capability: str | None = None, impact: str = "low",
+                 destructive: bool = False):
+        """Decorator that wraps a function in the GEE lifecycle.
+
+        Every call to the decorated function is preflight-checked, audited,
+        and recorded in the tamper-evident hash chain.
+
+        Usage:
+
+            @icebox.governed(capability=\"network_scan\", impact=\"low\")
+            def scan(host: str, ports: str):
+                ...
+        """
+        def decorator(fn):
+            @functools.wraps(fn)
+            def wrapper(*args, **kwargs):
+                target = kwargs.get("target", args[0] if args else "")
+                caps = [capability] if capability else []
+                task = {
+                    "name": fn.__name__,
+                    "target": target,
+                    "capabilities": caps,
+                    "impact": impact,
+                    "destructive": destructive,
+                    "context": "cli",
+                    "approved": False,
+                }
+                outcome = self.check_only(task)
+                t = outcome.get("type", outcome.get("variant", ""))
+                if t == "allowed":
+                    result = fn(*args, **kwargs)
+                    self.record_action(task, result)
+                    return result
+                if t == "needs_approval":
+                    raise NeedsApproval(outcome.get("reason", "approval required"))
+                raise ActionBlocked(outcome.get("reason", "blocked by policy"))
+            return wrapper
+        return decorator
