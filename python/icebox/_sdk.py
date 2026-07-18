@@ -128,60 +128,13 @@ class IceboxClient:
         })
 
     def get_openai_tools(self) -> list[dict]:
-        """Dynamically generates OpenAI-compatible JSON schemas for all ICEBOX modules."""
-        modules = self.list_modules()
-        tools = []
-        for mod in modules:
-            name = mod.get("name", "unknown")
-            desc = mod.get("description", "")
-            if mod.get("kind"):
-                desc = f"[{mod['kind']}] {desc}"
-            
-            # Build strictly typed JSON schema for parameters
-            properties = {}
-            required = []
-            
-            # The agent always needs to provide a target for ICEBOX to preflight
-            properties["target"] = {
-                "type": "string",
-                "description": "The target IP, hostname, or scope for this module execution."
-            }
-            required.append("target")
-            
-            # Parse module-specific options
-            opts = mod.get("options", {})
-            if opts:
-                options_props = {}
-                for opt_name, opt_val in opts.items():
-                    opt_type = "string"
-                    if isinstance(opt_val, bool):
-                        opt_type = "boolean"
-                    elif isinstance(opt_val, (int, float)):
-                        opt_type = "number"
-                    options_props[opt_name] = {
-                        "type": opt_type,
-                        "description": f"Option: {opt_name}"
-                    }
-                properties["options"] = {
-                    "type": "object",
-                    "properties": options_props,
-                    "description": "Additional module-specific options"
-                }
-            
-            tool = {
-                "type": "function",
-                "function": {
-                    "name": name,
-                    "description": desc,
-                    "parameters": {
-                        "type": "object",
-                        "properties": properties,
-                        "required": required
-                    }
-                }
-            }
-            tools.append(tool)
-        return tools
+        """Dynamically generates OpenAI-compatible JSON schemas for all ICEBOX modules.
+
+        Delegates to :func:`icebox.tools.openai_tools` so there is a single
+        canonical tool schema shared by the client and the LangChain helpers.
+        """
+        from .tools import openai_tools
+        return openai_tools(self)
 
 
 class GovernClient:
@@ -252,6 +205,79 @@ class GovernClient:
                       backward compatibility; always pass the real value.
         """
         return self._post("/api/v1/govern/record", (action, outcome, decision))
+
+
+class GovernedSession:
+    """A governed session over a single action.
+
+    Returned by :func:`govern`. Mirrors the Rust ``GovernanceRuntime`` and the
+    REST ``POST /govern`` contract: one model across all three surfaces.
+
+        with govern(config) as g:
+            verdict = g.preflight({"action": "scan", "target": "10.0.0.5", ...})
+            if verdict["approved"]:
+                result = do_scan()
+                g.complete(result, verdict["decision"])
+    """
+
+    def __init__(self, client: "GovernClient"):
+        self._client = client
+
+    def preflight(self, action: dict) -> dict:
+        """Run the action through the full GEE lifecycle.
+
+        Returns a GovernResult: ``{"approved": bool, "decision": str,
+        "reason": Optional[str], "decision_id": int, "chain_tip": str}``.
+        """
+        self._last_action = action
+        return self._client.govern(action)
+
+    def run(self, action: dict) -> dict:
+        """Preflight and, if approved, immediately record success.
+
+        Convenience for fire-and-forget governed actions where the "real"
+        execution is the daemon itself (e.g. a registered module). Returns the
+        GovernResult from ``preflight``.
+        """
+        verdict = self._client.govern(action)
+        if verdict.get("approved"):
+            self.complete({"success": True, "evidence": [], "data": {}},
+                          verdict.get("decision", "allow"))
+        return verdict
+
+    def complete(self, outcome: dict, decision: str = "allow") -> dict:
+        """Record the outcome of a previously governed action.
+
+        Appends evidence + an audit-chain entry, returns the chain tip.
+        """
+        return self._client.record(self._last_action, outcome, decision)
+
+    def __enter__(self) -> "GovernedSession":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+
+def govern(config: dict | None = None, url: str = "http://127.0.0.1:8443",
+           token: str | None = None) -> GovernedSession:
+    """Open a governed session — the flagship single-call governance API.
+
+    ``config`` is accepted for symmetry with the Rust ``GovernanceBuilder`` and
+    the in-process :class:`Governance` surface; the HTTP ``GovernClient``
+    governs against a running daemon's policy, not a local config.
+
+        with govern() as g:
+            verdict = g.preflight({...})
+            if verdict["approved"]:
+                g.complete(outcome, verdict["decision"])
+
+    The same mental model applies in Rust (``govern(config)``) and over REST
+    (``POST /govern`` then ``POST /govern/record``).
+    """
+    session = GovernedSession(GovernClient(url, token))
+    session._last_action = {}
+    return session
 
 
 class Governance:

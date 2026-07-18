@@ -5,7 +5,7 @@ use the CLI or the modules to govern your own agents.
 
 ```toml
 [dependencies]
-icebox = "0.1"
+icebox-gov = "0.2"
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
 ```
@@ -46,7 +46,12 @@ async fn main() {
 
 Set a CVSS score with `cvss: Some(CvssScore::from_score(9.5))` (or the
 structured form `CvssScore { cvss_v31: Some(9.5), epss: Some(0.9), kev: true, ..Default::default() }`)
-so `deny_if_cvss_above` policies can act on it. See `examples/govern_demo.rs`.
+so `deny_if_cvss_above` policies can act on it. See
+[`examples/govern_demo.rs`](https://github.com/Devaretanmay/icebox/blob/main/examples/govern_demo.rs).
+
+The same `govern(config)` → `run`/`execute` model is available in Python via
+``with govern() as g:`` and over REST via `POST /govern` then
+`POST /govern/record` — one API across all three surfaces.
 
 `GovernanceRuntime` is the in-process equivalent of the CLI seam. Use it
 to wrap any tool — Rust or otherwise — behind the same policy, approval,

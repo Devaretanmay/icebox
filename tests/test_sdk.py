@@ -71,6 +71,10 @@ class _Handler(BaseHTTPRequestHandler):
         self.rfile.read(length)
         if self.path == "/api/v1/modules/mysql_scanner/run":
             self._respond(RUN_RESULT)
+        elif self.path == "/api/v1/govern":
+            self._respond({"approved": True, "decision": "allow", "decision_id": 1, "chain_tip": "abc"})
+        elif self.path == "/api/v1/govern/record":
+            self._respond({"decision_id": 1, "chain_tip": "def"})
         elif "/approve" in self.path:
             self._respond("approved")
         elif "/deny" in self.path:
@@ -165,3 +169,20 @@ def test_governance_compat(client):
     gov = Governance({"url": client._base})
     assert isinstance(gov.pending(), list)
     assert isinstance(gov.audit_json(), list)
+
+
+def test_govern_context_manager(client):
+    from icebox import govern
+
+    with govern(url=client._base) as g:
+        verdict = g.preflight({
+            "action": "scan",
+            "target": "10.0.0.5",
+            "capability": "network_scan",
+            "impact": "low",
+            "destructive": False,
+        })
+        assert verdict["approved"] is True
+        recorded = g.complete({"success": True, "evidence": [], "data": {}},
+                              verdict.get("decision", "allow"))
+        assert "chain_tip" in recorded

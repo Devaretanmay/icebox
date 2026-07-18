@@ -4,7 +4,7 @@
 orchestration, and :class:`IceboxClient` for talking to the REST API.
 """
 
-from ._sdk import GovernClient, Governance, IceboxClient, IceboxError
+from ._sdk import GovernClient, Governance, IceboxClient, IceboxError, GovernedSession, govern
 
 import contextlib
 
@@ -50,5 +50,5 @@ class Workspace:
         finally:
             self.client.unbind_proxy(local_port)
 
-__all__ = ["Governance", "GovernClient", "IceboxClient", "IceboxError", "Workspace"]
+__all__ = ["Governance", "GovernClient", "IceboxClient", "IceboxError", "Workspace", "govern", "GovernedSession"]
 __version__ = "0.2.3"
