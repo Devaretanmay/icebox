@@ -73,63 +73,64 @@ curl -X POST http://127.0.0.1:8443/api/v1/modules/recon/run \
 
 ## 3. Using the Python SDK
 
-The Python SDK is the recommended path for integrating ICEBOX into autonomous agent frameworks (like LangChain, AutoGen, or custom loops).
+The Python SDK is the recommended path for integrating ICEBOX into autonomous agent frameworks (like LangChain, AutoGen, or custom loops). Isolation is **tier-driven**, not caller-controlled — pick `Fridge` (no sandbox), `Freezer`, or `DeepFreeze` (both require a sandbox); you cannot weaken a stronger tier from code.
 
 ```python
-from icebox import Workspace
+from icebox import Governance
 
-# The Workspace abstraction automatically accepts the charter and adds the target to scope
-workspace = Workspace(target="127.0.0.1")
+gov = Governance({
+    "charter": {"accepted": True, "engagement": "demo", "rules_of_engagement": []},
+    "scope": {"allow": ["127.0.0.1"]},
+    "max_risk": "critical",
+    "role": "admin",
+    # "tier": "freezer"  # optional; defaults to a safe tier in production paths
+})
 
-# Attempt to execute an offensive module with sandbox mode on
-try:
-    result = workspace.execute(
-        module="recon",
-        sandbox=True,
-        approved=True
-    )
-    print(f"Success! Output: {result}")
-    
-    # Audit trail is immediately available
-    trail = workspace.audit()
-    print(f"Audit Log: {trail}")
-    
-except Exception as e:
-    print(f"Execution blocked by ICEBOX governance: {e}")
+verdict = gov.run({
+    "name": "recon",
+    "target": "127.0.0.1",
+    "capabilities": ["network_scan"],
+    "impact": "low",
+    "destructive": False,
+})
+print(verdict)
 ```
+
+> The flagship `govern()` context manager and the REST `POST /govern` endpoint
+> mirror this exact shape. See `docs/sdk-python.md`.
 
 ## 4. Using the Rust SDK
 
-If you are building high-performance tooling natively in Rust, you can import the `icebox` crate and interact directly with the `ModuleExecutor`.
+If you are building high-performance tooling natively in Rust, import `icebox` and
+build a runtime with `GovernanceBuilder`, then drive actions through `govern()`.
 
 ```rust
-use icebox::core::governance::{Framework, PolicyContext};
-use icebox::core::module::load;
+use icebox::core::sdk::{GovernanceBuilder, TaskSpec, GovernedOutcome};
+use icebox::core::safety::{Capability, Charter, RiskLevel, Role};
+use serde_json::json;
 
 #[tokio::main]
 async fn main() {
-    let mut fw = Framework::new();
-    
-    // Accept charter and set scope
-    fw.executor.charter.accept("rust-audit".into(), vec![]);
-    fw.executor.scope.add_allow("127.0.0.1");
+    let rt = GovernanceBuilder::new()
+        .charter(Charter::accept("rust-audit", vec![]))
+        .scope(vec!["127.0.0.1".into()])
+        .max_risk(RiskLevel::Critical)
+        .role(Role::Admin)
+        .build();
 
-    // Load a module dynamically
-    let module = load("recon").expect("Module not found");
+    let task = TaskSpec {
+        name: "recon".into(),
+        target: "127.0.0.1".into(),
+        capabilities: vec![Capability::NetworkScan],
+        impact: RiskLevel::Low,
+        ..Default::default()
+    };
 
-    // Execute through the seam
-    let result = fw.executor.execute(
-        &module,
-        "127.0.0.1",
-        None,
-        false, // not pre-approved
-        PolicyContext::Cli,
-        None
-    ).await;
-
-    match result {
-        Ok(res) => println!("Success: {:?}", res),
-        Err(e) => println!("Governance Blocked: {}", e),
+    // `.run` auto-grants approval; `.execute` requires it.
+    match rt.run(task, || async { Ok(json!({"open_ports": [22, 80]})) }).await {
+        GovernedOutcome::Allowed { result, .. } => println!("Success: {result}"),
+        GovernedOutcome::Blocked { reason, .. } => println!("Blocked: {reason}"),
+        GovernedOutcome::NeedsApproval { approval_id, .. } => println!("Needs approval #{approval_id}"),
     }
 }
 ```

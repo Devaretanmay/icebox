@@ -4,6 +4,23 @@ ICEBOX has exactly one governance seam: `ModuleExecutor::execute()`. Every
 operator action, REST call, and agent step must pass through it. That single
 chokepoint is what makes the system auditable.
 
+## Three layers (what's frozen vs. what's open)
+
+ICEBOX is split into three layers. Only **Layer 1** is frozen; Layers 2 and 3 are
+where contributions and product work happen.
+
+- **Layer 1 — ICEBOX Kernel (FROZEN).** The Governed Execution Environment and its
+  engines in `src/core/`: executor / stage machine, policy engine, audit hash-chain,
+  sandbox isolation, approval workflow, validation. No new runtime features are
+  accepted here unless they *strengthen* a GEE guarantee. See
+  [GEE_INVARIANTS.md](GEE_INVARIANTS.md).
+- **Layer 2 — Security Distribution.** Security modules, policy packs, agent
+  integrations, payload generators, and reference examples. Lives in `src/modules/`
+  and friends. This is where the offensive value is packaged.
+- **Layer 3 — Ecosystem.** The Rust + Python SDKs, the REST API, the CLI, docs,
+  distribution (crates.io / PyPI / Docker / Homebrew), and the operator dashboard.
+  This is the developer-facing surface.
+
 ## Layers (top → bottom)
 
 1. **Interfaces** — the REPL CLI and the Axum REST API on

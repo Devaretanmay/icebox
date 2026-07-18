@@ -34,6 +34,30 @@ do, why, and whether the controls held. The bundled offensive modules are
 reference implementations that exercise the seam — the framework itself is
 built to govern arbitrary tools and agents, not just the ones shipped here.
 
+## Why ICEBOX exists
+
+Autonomous agents running offensive security tooling is a terrifying prospect: one
+hallucination and an agent meant to scan a staging box is firing exploits at
+production. ICEBOX is the runtime governance layer that puts a hard, auditable
+boundary — the **Governance Seam** — between agents (and human operators) and the
+targets they touch. Nothing executes outside it.
+
+- **What it is:** a single mandatory execution primitive (the GEE) that every
+  action must clear — policy, approval, isolation, audit, validation.
+- **Why it matters:** it strips life-or-death decisions away from the LLM. If an
+  agent hallucinates an out-of-scope, high-risk action, ICEBOX blocks it, records
+  the failure in a tamper-evident audit log, and lets the agent try again.
+- **Who it's for:** security engineers and red teams who want to run autonomous or
+  semi-autonomous tooling *without* surrendering control or accountability.
+
+### Honest limits
+
+The GEE governs what passes through the seam — it does **not** sanitize an unsafe
+*policy* (allow a capability and ICEBOX executes it, governed, not cleaned up), and
+it cannot recover a lost or swapped audit chain. Read the full guarantee set and
+limitations in [`docs/GEE_INVARIANTS.md`](docs/GEE_INVARIANTS.md) before relying on
+it in production.
+
 ## Table of contents
 
 - [Features](#features)
@@ -55,7 +79,15 @@ Before diving in, there are a few core concepts you need to understand about how
 
 ### 1. The Governed Execution Environment (GEE)
 
-ICEBOX enforces governance at exactly one point: `ModuleExecutor`, the GEE. Every operator action, REST call, and agent step runs as a GEE that advances through a fixed lifecycle — `request → policy_evaluation → sandbox_proisioning → approval_check → execute → collect_evidence → audit → validate → destroy`. Each stage is a hard gate; the action cannot bypass it, and the terminal stages (audit, validate, destroy) always run even when an earlier stage denies or fails the request. That single mandatory primitive is what makes the whole system auditable.
+ICEBOX enforces governance at exactly one point: `ModuleExecutor`, the GEE. Every operator action, REST call, and agent step runs as a GEE that advances through a fixed, **forward-only** lifecycle of ten stages:
+
+```
+Request → Authorization → PolicyEvaluation → CapabilityCheck →
+ApprovalCheck → SandboxProvisioning → Execution → Validation →
+Audit → Destroy
+```
+
+Each stage is a hard gate; the action cannot skip or reverse a stage. The terminal stages (Validation, Audit, Destroy) always run — even when an earlier stage denies or fails the request — so the audit chain and evidence survive every outcome. That single mandatory primitive is what makes the whole system auditable. See [`docs/GEE_INVARIANTS.md`](docs/GEE_INVARIANTS.md) for the full, frozen guarantee set.
 
 ### 2. Mandatory Sandboxing
 
@@ -170,6 +202,11 @@ verdict = gov.run({
 print(verdict)
 ```
 
+> **Note:** isolation is **tier-driven**, not caller-controlled. The `sandbox`
+> parameter was removed — `Freezer`/`DeepFreeze` tiers always require a sandbox,
+> `Fridge` does not. You choose the tier; you cannot weaken the isolation of a
+> stronger tier.
+
 ### 5. Seamless Autonomous Agent Integration
 
 ICEBOX acts as the ultimate "seatbelt" for Autonomous Agents by automatically generating OpenAI-compatible JSON tool schemas for all registered offensive modules:
@@ -185,7 +222,7 @@ tools = client.get_openai_tools()
 # requests dashboard approval, and executes the real payload in the sandbox!
 ```
 
-### 5. Layer in CVSS-aware policy
+### 6. Layer in CVSS-aware policy
 
 ```bash
 icebox> policy rule add deny-cvss 7.0
@@ -265,8 +302,13 @@ findings. Payload denial (`DenyPayload`) is also enforced proactively via a `dry
 
 ## Documentation
 
-Full docs — SDK references, deployment guidance, and policy authoring — are
-available locally in the [`docs/`](docs/) directory.
+- **[What / Why / Who & limitations](docs/what-is-icebox.md)** — start here.
+- **[GEE invariants (frozen guarantees)](docs/GEE_INVARIANTS.md)** — what the kernel promises and what it does not.
+- **[Architecture](docs/architecture.md)** — the 3-layer split (Kernel / Security Distribution / Ecosystem).
+- **[Quickstart](docs/quickstart.md)** — install + govern in 15 minutes.
+- **[Installation](docs/installation.md)**, **[SDK (Python)](docs/sdk-python.md)**, **[SDK (Rust)](docs/sdk-rust.md)**, **[Policy reference](docs/features.md)**.
+
+Full docs are available locally in the [`docs/`](docs/) directory.
 
 ## Security
 

@@ -2,6 +2,11 @@
 
 ICEBOX ships with a unified Python SDK that includes an interactive setup wizard. This is the recommended path for both Python and non-Python users.
 
+> **Status of the one-liners:** `pip install icebox-sdk` and `cargo install
+> icebox-gov` are the flagship install paths and are documented here as the goal.
+> Until the published packages / releases exist, **build from source** (section 4)
+> as the working fallback. The Docker image is available from GHCR for demos.
+
 ## 1. Unified Python SDK (Recommended)
 
 ```sh
@@ -34,12 +39,31 @@ docker pull ghcr.io/devaretanmay/icebox:latest
 docker run --rm -p 8443:8443 ghcr.io/devaretanmay/icebox
 ```
 
+## 4. Build from source (fallback)
+
+Works today, no published package required.
+
+```sh
+git clone https://github.com/Devaretanmay/icebox.git
+cd icebox
+cargo build --release                 # produces ./target/release/icebox-daemon
+cargo xtask build-sandbox-worker      # required for mandatory sandboxing (needs Docker)
+cd python && pip install -e .         # Python SDK (PyO3 extension)
+```
+
+Run the daemon / REPL:
+
+```sh
+./target/release/icebox-daemon --api   # REST API only
+./target/release/icebox-daemon         # interactive REPL + REST API
+```
+
 ## Verify
 
 ```sh
-# Verify the daemon proxy works
-icebox --version
+# Verify the daemon
+./target/release/icebox-daemon --version
 
-# Verify the SDK
-python -c "from icebox import Workspace; print('ok')"
+# Verify the SDK (source build)
+python -c "from icebox import Governance; print('ok')"
 ```
