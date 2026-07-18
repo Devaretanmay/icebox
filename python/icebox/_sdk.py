@@ -11,6 +11,32 @@ import urllib.request
 from typing import Any
 
 
+def _as_list(value) -> list:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return [value]
+
+
+def _normalize_outcome(outcome: dict) -> dict:
+    if "Allowed" in outcome:
+        return {"approved": True, "decision": "allow", "reason": None,
+                "decision_id": outcome["Allowed"]["decision_id"], "chain_tip": ""}
+    if "Blocked" in outcome:
+        b = outcome["Blocked"]
+        return {"approved": False, "decision": "deny", "reason": b.get("reason"),
+                "decision_id": b["decision_id"], "chain_tip": ""}
+    if "NeedsApproval" in outcome:
+        n = outcome["NeedsApproval"]
+        return {"approved": False, "decision": "require_approval",
+                "reason": n.get("reason"), "decision_id": n["decision_id"],
+                "chain_tip": ""}
+    return outcome
+
+
 class IceboxError(Exception):
     pass
 
@@ -297,15 +323,20 @@ class Governance:
             self._native = None
 
     def check(self, task: dict) -> dict:
-        name = task.get("module", task.get("name", ""))
-        target = task.get("target", "")
-        
         if self._native:
             import json
-            options = task.get("options")
-            raw_json = self._native.run_module(name, target, options)
-            return json.loads(raw_json)
-        
+            spec = {
+                "name": task.get("action", task.get("module", task.get("name", ""))),
+                "target": task.get("target", ""),
+                "capabilities": _as_list(task.get("capability", task.get("capabilities", []))),
+                "impact": task.get("impact", "low"),
+                "destructive": task.get("destructive", False),
+            }
+            outcome = json.loads(self._native.preflight_action(json.dumps(spec)))
+            return _normalize_outcome(outcome)
+
+        name = task.get("module", task.get("name", ""))
+        target = task.get("target", "")
         try:
             return self._client.run_module(name, target)
         except Exception as e:
