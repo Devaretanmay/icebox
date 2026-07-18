@@ -25,11 +25,7 @@ pub enum ExecutorError {
     Sandbox(String),
 }
 
-/// The execution seam of ICEBOX and its fundamental execution primitive:
-/// every action runs as a Governed Execution Environment (GEE). This type owns
-/// the GEE lifecycle (policy evaluation, sandbox provisioning, approval
-/// gating, execution, evidence collection, audit, validation, and teardown)
-/// and keeps the state required to enforce it.
+/// The execution seam: owns the GEE lifecycle state and enforces it.
 #[derive(Debug)]
 pub struct ModuleExecutor {
     pub charter: Charter,
@@ -45,9 +41,6 @@ pub struct ModuleExecutor {
 }
 
 impl ModuleExecutor {
-    /// Enforce forward-only, no-skip stage transitions.
-    /// Each stage must advance to its immediate successor in the lifecycle —
-    /// no skipping ahead, no going backwards.
     fn transition_to(&mut self, next: GeeStage) {
         let life = GeeStage::lifecycle();
         let cur_idx = life
@@ -149,9 +142,6 @@ impl ModuleExecutor {
         &self.audit
     }
 
-    /// Pure governance check: evaluate policy, scope, and approval gates
-    /// without executing the action. Returns a decision the caller acts upon.
-    /// This is the single-entry "Stripe-style" govern() call.
     pub fn govern_action(&mut self, action: &GovernAction, context: PolicyContext) -> GovernResult {
         let capability = match Capability::from_str(&action.capability) {
             Ok(c) => c,
@@ -231,9 +221,6 @@ impl ModuleExecutor {
         }
     }
 
-    /// Record completion of a prior governed action.
-    /// Appends evidence and an audit-chain entry recording the actual
-    /// policy decision (not a hardcoded Allow). Returns the chain tip.
     pub fn record_action(
         &mut self,
         action: &GovernAction,
@@ -320,7 +307,6 @@ impl ModuleExecutor {
             self.stage
         );
 
-        // ── 1. PolicyEvaluation ──────────────────────────────────
         self.transition_to(GeeStage::PolicyEvaluation);
         let pf = self
             .preflight(loaded, target, destructive_override, approved, context)
@@ -328,13 +314,11 @@ impl ModuleExecutor {
         let policy = self.policy(context);
         let decision = policy.evaluate(&pf.to_request());
         self.record_decision(&loaded.info.name, &pf, &decision);
-        // Enforce the policy decision as the first GEE gate.
         if let PolicyDecision::Deny(reason) = decision {
             self.stage = GeeStage::Request;
             return Err(ExecutorError::Preflight(PreflightError::Denied(reason)));
         }
 
-        // ── 2. ScopeEnforcement ──────────────────────────────────
         self.transition_to(GeeStage::ScopeEnforcement);
         if !self.scope.is_in_scope(target) {
             let reason = format!("target {target} is out of scope");
@@ -347,7 +331,6 @@ impl ModuleExecutor {
             return Err(ExecutorError::Preflight(PreflightError::Denied(reason)));
         }
 
-        // ── 3. SandboxProvisioning ───────────────────────────────
         self.transition_to(GeeStage::SandboxProvisioning);
         let mut maybe_sandbox: Option<crate::core::sandbox::Sandbox> = None;
         if self.tier.requires_sandbox() {
@@ -372,7 +355,6 @@ impl ModuleExecutor {
             }
         }
 
-        // ── 4. ApprovalCheck ─────────────────────────────────────
         self.transition_to(GeeStage::ApprovalCheck);
         let needs_approval = matches!(decision, PolicyDecision::RequireApproval(_))
             || (self.tier.requires_explicit_approval());
@@ -397,7 +379,6 @@ impl ModuleExecutor {
             return Err(ExecutorError::Preflight(PreflightError::ApprovalRequired));
         }
 
-        // ── 5. Execute ───────────────────────────────────────────
         self.transition_to(GeeStage::Execute);
         info!(
             target = %target,
@@ -418,7 +399,6 @@ impl ModuleExecutor {
                         &pf,
                         &PolicyDecision::Deny(reason.clone()),
                     );
-                    // Early return — skip execution but still teardown
                     self.transition_to(GeeStage::CollectEvidence);
                     self.transition_to(GeeStage::Audit);
                     self.transition_to(GeeStage::Validate);
@@ -461,7 +441,6 @@ impl ModuleExecutor {
             }
         };
 
-        // ── 6. CollectEvidence ───────────────────────────────────
         self.transition_to(GeeStage::CollectEvidence);
         let denied = policy.denied_payload(&result);
         if !denied.is_empty() {
@@ -487,12 +466,9 @@ impl ModuleExecutor {
 
         self.record_evidence(&loaded.info.name, target, &result, job_id);
 
-        // ── 7. Audit ─────────────────────────────────────────────
         self.transition_to(GeeStage::Audit);
 
-        // ── 8. Validate ──────────────────────────────────────────
         self.transition_to(GeeStage::Validate);
-        // 8a. Audit chain integrity
         if !self.audit.verify() {
             let reason = "audit chain integrity check failed during Validate stage".to_string();
             self.record_failure(&loaded.info.name, target, &reason, context);
@@ -502,7 +478,6 @@ impl ModuleExecutor {
             self.stage = GeeStage::Request;
             return Err(ExecutorError::Sandbox(reason));
         }
-        // 8b. Evidence consistency: ids must have monotonically increasing timestamps
         for w in self.evidence.windows(2) {
             let ts_a = w[0]
                 .id
@@ -530,7 +505,6 @@ impl ModuleExecutor {
                 _ => {}
             }
         }
-        // 8c. Every execution must have at least one decision record
         if self.audit.records().is_empty() {
             let reason = "no decision records found after execution".to_string();
             self.record_failure(&loaded.info.name, target, &reason, context);
@@ -541,12 +515,10 @@ impl ModuleExecutor {
             return Err(ExecutorError::Sandbox(reason));
         }
 
-        // ── 9. Destroy ───────────────────────────────────────────
         self.transition_to(GeeStage::Destroy);
         self.teardown_sandbox(&mut maybe_sandbox, &loaded.info.name, target, job_id)
             .await;
 
-        // Reset for next execution
         self.stage = GeeStage::Request;
         Ok(result)
     }
@@ -674,7 +646,6 @@ mod tests {
             ScopeManager::new(vec!["127.0.0.1".into()]),
             RiskLevel::Low,
         );
-        // Advance to a later stage, then try to go backwards — must panic.
         exec.transition_to(GeeStage::Execute);
         exec.transition_to(GeeStage::Request);
     }
@@ -687,7 +658,6 @@ mod tests {
             ScopeManager::new(vec!["127.0.0.1".into()]),
             RiskLevel::Low,
         );
-        // From Request, jump to Destroy (skipping all intermediate stages).
         exec.transition_to(GeeStage::Destroy);
     }
 
@@ -714,7 +684,6 @@ mod tests {
             )
             .await;
         assert!(result.is_ok(), "in-scope approved low-risk run must pass");
-        // After a successful lifecycle, stage must reset to Request for re-entry.
         assert_eq!(exec.stage, GeeStage::Request);
         assert!(
             !exec.audit.is_empty(),
@@ -734,7 +703,6 @@ mod tests {
             RiskLevel::Critical,
         );
         exec.tier = Tier::Fridge;
-        // Out-of-scope target must be denied, but stage still resets.
         let mut loaded = crate::modules::load("tcp_port_scanner").expect("module");
         let result = exec
             .execute(

@@ -19,8 +19,7 @@ pub enum RiskLevel {
     Critical = 4,
 }
 
-/// Operational governance tiers. Each tier maps to concrete policy behavior:
-/// sandbox containment, a CVSS deny threshold, and explicit-approval gating.
+/// Operational governance tiers: each maps to sandbox/CVSS/approval policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum Tier {
@@ -616,14 +615,12 @@ impl PolicySet {
         })
     }
 
-    /// Load policy rules from a YAML file on disk.
     pub fn load_yaml(path: impl AsRef<std::path::Path>) -> Result<Self, String> {
         let contents =
             std::fs::read_to_string(path.as_ref()).map_err(|e| format!("read error: {e}"))?;
         Self::load_yaml_str(&contents)
     }
 
-    /// Parse policy rules from a YAML string.
     pub fn load_yaml_str(s: &str) -> Result<Self, String> {
         serde_yaml::from_str::<PolicySet>(s).map_err(|e| format!("YAML parse error: {e}"))
     }
@@ -638,14 +635,10 @@ pub struct ConfigPolicy {
 
 impl PolicyEngine for ConfigPolicy {
     fn evaluate(&self, req: &PolicyRequest) -> PolicyDecision {
-        // Deny always wins — checked first.
         if let Some(c) = self.rules.denied(&req.capabilities) {
             return PolicyDecision::Deny(format!("capability {} denied by policy", c.as_str()));
         }
 
-        // AllowCapability pre-approves — checked before any RequireApproval gate
-        // so it can waive explicit RequireApproval rules, CVSS gates, and the
-        // default destructive/high-risk approval requirement.
         let pre_approved = self.rules.allows(&req.capabilities);
 
         if !pre_approved {
@@ -721,9 +714,7 @@ impl PolicyEngine for ConfigPolicy {
 }
 
 impl ConfigPolicy {
-    /// Returns the first denied payload pattern found in a module's emitted
-    /// evidence or structured data, or an empty string when none match.
-    /// Enforced proactively via dry_run when supported; post-execution fallback otherwise.
+    /// First denied payload pattern in emitted evidence/data, else empty.
     pub fn denied_payload(&self, result: &ModuleResult) -> String {
         let mut haystack = String::new();
         for e in &result.evidence {

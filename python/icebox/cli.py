@@ -79,19 +79,15 @@ def interactive_setup():
         print("[ERROR] Setup is incomplete. Please resolve the missing dependencies and run 'icebox' again.")
 
 def main():
-    # If the user passed arguments, we act as a transparent proxy to the Rust daemon.
-    # We skip the setup wizard so it doesn't break automated workflows.
+    # With args, proxy transparently to icebox-daemon; else run the wizard.
     if len(sys.argv) > 1:
-        # Check if the daemon exists before trying to run it
         try:
-            # os.execvp replaces the current process with the icebox-daemon
             os.execvp("icebox-daemon", ["icebox-daemon"] + sys.argv[1:])
         except FileNotFoundError:
             print("[ERROR] 'icebox-daemon' not found in PATH.")
             print("Please run 'icebox' (with no arguments) to launch the setup wizard and install it.")
             sys.exit(1)
-    
-    # If no arguments were provided, launch the interactive setup wizard.
+
     try:
         interactive_setup()
     except KeyboardInterrupt:

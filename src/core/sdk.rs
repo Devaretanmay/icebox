@@ -35,7 +35,6 @@ pub struct GovernResult {
     pub chain_tip: String,
 }
 
-/// Outcome of executing an action outside ICEBOX, to be recorded.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionOutcome {
     pub success: bool,
@@ -43,7 +42,6 @@ pub struct ActionOutcome {
     pub data: serde_json::Value,
 }
 
-/// Result after recording an action outcome into the audit chain.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecordResult {
     pub decision_id: u64,
@@ -185,9 +183,6 @@ impl GovernanceRuntime {
         self.enforce(task, action, false).await
     }
 
-    /// Evaluate policy and record the decision without running the action.
-    /// Returns Allowed (with null result), Blocked, or NeedsApproval.
-    /// The caller runs the action only when Allowed, then calls `complete()`.
     pub async fn preflight(&self, task: TaskSpec) -> GovernedOutcome {
         let mut st = self.state.lock().await;
 
@@ -253,8 +248,6 @@ impl GovernanceRuntime {
         }
     }
 
-    /// Record that a preflighted action completed successfully.
-    /// Creates a new audit entry linked to the preflight decision.
     pub async fn complete(
         &self,
         task: TaskSpec,

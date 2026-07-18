@@ -1,9 +1,5 @@
-//! Example: govern a task through the ICEBOX Governed Execution Environment.
-//!
-//! Run with: `cargo run --example govern_demo`
-//!
-//! This mirrors the Python `with govern(config) as g:` context manager and the
-//! REST `POST /govern` contract — one model across all three surfaces.
+//! Example: govern a task via `govern(config)` — `cargo run --example govern_demo`.
+//! Mirrors the Python `with govern()` and REST `POST /govern` (one model, three surfaces).
 
 use icebox::core::safety::{Charter, RiskLevel, ScopeManager};
 use icebox::core::sdk::{govern, GovernanceConfig, GovernedOutcome, TaskSpec};
@@ -12,7 +8,6 @@ use serde_json::json;
 
 #[tokio::main]
 async fn main() {
-    // `govern(config)` builds a GovernanceRuntime — the single governed-call API.
     let rt = govern(GovernanceConfig {
         charter: Charter::accept("govern-demo", vec!["no destruction".into()]),
         scope: ScopeManager::new(vec!["10.0.0.0/24".into()]),
@@ -32,7 +27,6 @@ async fn main() {
             ("ports".into(), "1-1024".into()),
         ]
         .into(),
-        // Optional: feed a real CVSS score so deny_if_cvss_above can act on it.
         cvss: Some(CvssScore {
             cvss_v31: Some(9.5),
             cvss_v40: None,
@@ -42,7 +36,6 @@ async fn main() {
         ..Default::default()
     };
 
-    // `run` auto-grants approval-gated tasks; `execute` queues them for approval.
     let outcome: GovernedOutcome = rt
         .run(task, || async { Ok(json!({"open_ports": [22, 80, 443]})) })
         .await;

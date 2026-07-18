@@ -13,8 +13,6 @@ fn digest(bytes: &[u8]) -> String {
     hex::encode(h.finalize())
 }
 
-/// A tamper-evident audit entry: a decision record chained to its predecessor
-/// by a SHA-256 hash over (prev_hash || canonical record).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEntry {
     pub seq: u64,
@@ -49,9 +47,7 @@ impl AuditEntry {
     }
 }
 
-/// The append-only, hash-chained audit ledger of a Governed Execution Environment.
-/// Every decision (allow, deny, require-approval) is linked to the one before it,
-/// so any retrospective modification of a record breaks the chain at verify().
+/// Append-only, hash-chained audit ledger; tampering is detected at verify().
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HashChain {
     entries: Vec<AuditEntry>,
@@ -108,8 +104,6 @@ impl HashChain {
         self.head.clone()
     }
 
-    /// Recompute every link from the genesis hash; returns false on the first
-    /// entry whose hash does not match its claimed predecessor (tamper proof).
     pub fn verify(&self) -> bool {
         let mut prev = GENESIS.to_string();
         for e in &self.entries {
@@ -125,15 +119,12 @@ impl HashChain {
         true
     }
 
-    /// Persist the chain to a JSON file on disk.
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), String> {
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| format!("audit serialization failed: {e}"))?;
         std::fs::write(path.as_ref(), json).map_err(|e| format!("audit write failed: {e}"))
     }
 
-    /// Restore a chain from a JSON file on disk. Returns an empty chain if
-    /// the file does not exist (first run).
     pub fn load(path: impl AsRef<Path>) -> Result<Self, String> {
         if !path.as_ref().exists() {
             return Ok(HashChain::new());
