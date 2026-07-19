@@ -206,6 +206,7 @@ impl GovernanceRuntime {
             max_risk: st.config.policy_set.max_risk(st.config.max_risk),
             context: task.context,
             rules: st.config.policy_set.clone(),
+            ..Default::default()
         };
         let decision = policy.evaluate(&req);
         let decision_id = st.next_decision_id;
@@ -316,6 +317,7 @@ impl GovernanceRuntime {
             max_risk: st.config.policy_set.max_risk(st.config.max_risk),
             context: task.context,
             rules: st.config.policy_set.clone(),
+            ..Default::default()
         };
         let decision = policy.evaluate(&req);
         let decision_id = st.next_decision_id;

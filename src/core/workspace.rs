@@ -85,7 +85,11 @@ impl WorkspaceSnapshot {
 
     pub fn save_to_file(&self, path: &str) -> Result<(), crate::core::WorkspaceError> {
         let json = serde_json::to_string_pretty(self).map_err(crate::core::WorkspaceError::Json)?;
-        std::fs::write(path, &json).map_err(crate::core::WorkspaceError::Io)?;
+        // Atomic write: temp file + rename so a crash mid-write can't corrupt
+        // the workspace (which now also carries the audit ledger).
+        let tmp = format!("{path}.tmp");
+        std::fs::write(&tmp, &json).map_err(crate::core::WorkspaceError::Io)?;
+        std::fs::rename(&tmp, path).map_err(crate::core::WorkspaceError::Io)?;
         Ok(())
     }
 

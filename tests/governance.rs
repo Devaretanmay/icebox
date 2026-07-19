@@ -103,6 +103,7 @@ fn cvss_deny_above_threshold() {
     };
 
     let policy = icebox::core::safety::ConfigPolicy {
+        safe_mode: None,
         max_risk: RiskLevel::Critical,
         context: PolicyContext::Autonomous,
         rules: icebox::core::safety::PolicySet {
@@ -147,6 +148,7 @@ fn cvss_require_approval_above_threshold() {
     };
 
     let policy = icebox::core::safety::ConfigPolicy {
+        safe_mode: None,
         max_risk: RiskLevel::Critical,
         context: PolicyContext::Autonomous,
         rules: icebox::core::safety::PolicySet {
@@ -192,6 +194,7 @@ fn cvss_epss_triggers_approval() {
     };
 
     let policy = icebox::core::safety::ConfigPolicy {
+        safe_mode: None,
         max_risk: RiskLevel::Critical,
         context: PolicyContext::Autonomous,
         rules: icebox::core::safety::PolicySet {
@@ -226,6 +229,7 @@ fn cvss_kev_triggers_approval() {
     let cvss = CvssScore::kev(6.5);
 
     let policy = icebox::core::safety::ConfigPolicy {
+        safe_mode: None,
         max_risk: RiskLevel::Critical,
         context: PolicyContext::Autonomous,
         rules: icebox::core::safety::PolicySet {

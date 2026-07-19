@@ -13,6 +13,27 @@ The **enforcement seam is fundamentally sound**: a malicious agent cannot smuggl
 Severity tally:
 - CRITICAL: C1 (audit not persisted), C2 (`target_matches` ignores `.*`)
 - HIGH: H1 (corrupt policy fails open), H2 (persistence manual/opt-in), H3 (non-atomic save)
+
+## Remediation status (updated)
+
+| ID | Finding | Status | Commit / evidence |
+|----|---------|--------|------------------|
+| C1 | Audit not persisted | **FIXED** | `audit.rs` `HashChain::with_path` (fsync per append, replay on load); `build_framework` attaches `~/.icebox/audit.jsonl`; `WorkspaceSnapshot` carries `audit_entries`. Verified: 3 decisions survive restart. |
+| C2 | `target_matches` ignores `.*` | **FIXED** | `safety.rs:536` now treats `*`/`/.*` as match-all. Verified: `RequireApproval{Persistence,".*"}` blocks `reverse_shell_generator` even with `approved:true`. |
+| H1 | Corrupt policy fails open | **FIXED** | `main.rs` `build_framework`: load failure → `executor.safe_mode` set; `ConfigPolicy::evaluate` denies everything (`SAFE MODE`). Verified: corrupt `policy.yaml` → all governs DENY with safe-mode reason. |
+| H3 | Non-atomic save | **FIXED** (audit + workspace) | `audit.rs` `save` and `workspace.rs` `save_to_file` use temp-file + rename. |
+| H2 | Persistence manual/opt-in | PARTIAL | Audit now auto-persists (C1). Charter/scope/policy still require explicit `save`/`load`. |
+
+### Deep Category-4 re-test (durable ledger) — all pass
+- Delete audit file → daemon starts, empty trail, no panic.
+- Corrupt MIDDLE line (valid structure, hash tampered) → integrity verify fails → file **quarantined** to `audit.jsonl.corrupt`, fresh ledger starts (0 entries), loud ERROR. No silent loss.
+- Truncated (partial) last line (simulated crash mid-write) → prefix recovered (3 of 4), truncated tail dropped, chain continues on new appends (→5).
+- `verify()` still detects in-memory tampering (unit tests).
+
+### Still open
+- H2 (charter/scope/policy auto-persist) — audit is now durable; the rest remains manual.
+- Categories 3 (sandbox), 6 (multi-agent), 8 (enterprise), 9 (perf), 10 (5-model red-team) not yet executed.
+
 - PASSED: 8 core guarantees held under adversarial input
 
 ---

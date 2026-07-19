@@ -34,6 +34,8 @@ pub struct ModuleExecutor {
     pub policy_set: PolicySet,
     pub tier: crate::core::safety::Tier,
     pub audit: HashChain,
+    /// Set when policy failed to load; engine denies everything (fail-closed).
+    pub safe_mode: Option<String>,
     pub evidence: Vec<Evidence>,
     pub traces: Vec<ReasoningTrace>,
     pub memories: Vec<MemoryEntry>,
@@ -73,6 +75,7 @@ impl ModuleExecutor {
             policy_set: PolicySet::default(),
             tier: crate::core::safety::Tier::Fridge,
             audit: HashChain::new(),
+            safe_mode: None,
             evidence: Vec::new(),
             traces: Vec::new(),
             memories: Vec::new(),
@@ -89,6 +92,7 @@ impl ModuleExecutor {
 
     pub fn policy(&self, context: PolicyContext) -> ConfigPolicy {
         let mut policy = make_config_policy(self.max_risk, context, &self.policy_set);
+        policy.safe_mode = self.safe_mode.clone();
         if let Some(thr) = self.tier.cvss_threshold() {
             policy
                 .rules

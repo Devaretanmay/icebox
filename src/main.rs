@@ -163,7 +163,22 @@ async fn build_framework() -> SharedFramework {
         let audit_path = std::path::Path::new(&home).join(".icebox/audit.jsonl");
         match executor.set_audit_path(&audit_path) {
             Ok(_) => eprintln!("audit ledger: {}", audit_path.display()),
-            Err(e) => eprintln!("warn: audit ledger unavailable: {e}"),
+            Err(e) => {
+                // A corrupt/unreadable ledger must not silently fall back to an
+                // in-memory (lossy) chain. Quarantine the bad file for
+                // forensics and start a fresh durable ledger, loudly.
+                if audit_path.exists() {
+                    let quar = audit_path.with_extension("jsonl.corrupt");
+                    let _ = std::fs::rename(&audit_path, &quar);
+                    eprintln!(
+                        "ERROR: audit ledger {} failed ({e}) — quarantined to {} and started a NEW ledger. Past audit history is in the quarantined file.",
+                        audit_path.display(),
+                        quar.display()
+                    );
+                } else {
+                    eprintln!("ERROR: audit ledger unavailable: {e}");
+                }
+            }
         }
     }
     let fw = new_shared_framework(executor);
@@ -177,7 +192,18 @@ async fn build_framework() -> SharedFramework {
                     lock.executor.policy_set = policy;
                     eprintln!("auto-loaded policy from {}", policy_path.display());
                 }
-                Err(e) => eprintln!("warn: failed to load {}: {e}", policy_path.display()),
+                Err(e) => {
+                    // Fail CLOSED: a corrupt/missing policy must not silently
+                    // drop guardrails. Enter safe mode (deny-everything) and
+                    // refuse to govern until the policy is fixed.
+                    let mut lock = fw.lock().await;
+                    lock.executor.safe_mode =
+                        Some(format!("failed to load {}: {e}", policy_path.display()));
+                    eprintln!(
+                        "ERROR: {} failed to load — ICEBOX is in SAFE MODE (all actions denied). Fix the policy file.",
+                        policy_path.display()
+                    );
+                }
             }
         }
         apply_onboarding(&fw, home).await;

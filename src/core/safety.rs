@@ -634,15 +634,21 @@ impl PolicySet {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ConfigPolicy {
     pub max_risk: RiskLevel,
     pub context: PolicyContext,
     pub rules: PolicySet,
+    /// When `Some`, the policy failed to load and the engine denies everything
+    /// (fail-closed). The reason is surfaced to the caller.
+    pub safe_mode: Option<String>,
 }
 
 impl PolicyEngine for ConfigPolicy {
     fn evaluate(&self, req: &PolicyRequest) -> PolicyDecision {
+        if let Some(reason) = &self.safe_mode {
+            return PolicyDecision::Deny(format!("SAFE MODE (policy failed to load): {reason}"));
+        }
         if let Some(c) = self.rules.denied(&req.capabilities) {
             return PolicyDecision::Deny(format!("capability {} denied by policy", c.as_str()));
         }
@@ -757,6 +763,7 @@ pub fn make_config_policy(
         max_risk,
         context,
         rules: rules.clone(),
+        safe_mode: None,
     }
 }
 
@@ -1006,6 +1013,7 @@ mod tests {
         let mut rules = PolicySet::default();
         rules.add_rule(PolicyRule::DenyPayload("reverse_shell".into()));
         let policy = ConfigPolicy {
+            safe_mode: None,
             max_risk: RiskLevel::Critical,
             context: PolicyContext::Cli,
             rules,
@@ -1024,6 +1032,7 @@ mod tests {
         let mut rules = PolicySet::default();
         rules.add_rule(PolicyRule::DenyPayload("AKIA".into()));
         let policy = ConfigPolicy {
+            safe_mode: None,
             max_risk: RiskLevel::Critical,
             context: PolicyContext::Cli,
             rules,
@@ -1042,6 +1051,7 @@ mod tests {
         let mut rules = PolicySet::default();
         rules.add_rule(PolicyRule::DenyPayload("forbidden".into()));
         let policy = ConfigPolicy {
+            safe_mode: None,
             max_risk: RiskLevel::Critical,
             context: PolicyContext::Cli,
             rules,
@@ -1059,6 +1069,7 @@ mod tests {
     fn allow_capability_overrides_explicit_require_approval() {
         use crate::core::safety::PolicyEngine;
         let policy = ConfigPolicy {
+            safe_mode: None,
             max_risk: RiskLevel::Critical,
             context: PolicyContext::Cli,
             rules: PolicySet {
@@ -1093,6 +1104,7 @@ mod tests {
     fn allow_capability_overrides_cvss_require_approval() {
         use crate::core::safety::PolicyEngine;
         let policy = ConfigPolicy {
+            safe_mode: None,
             max_risk: RiskLevel::Critical,
             context: PolicyContext::Cli,
             rules: PolicySet {
@@ -1133,6 +1145,7 @@ mod tests {
     fn deny_capability_still_wins_over_allow() {
         use crate::core::safety::PolicyEngine;
         let policy = ConfigPolicy {
+            safe_mode: None,
             max_risk: RiskLevel::Critical,
             context: PolicyContext::Cli,
             rules: PolicySet {
