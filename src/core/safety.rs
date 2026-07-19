@@ -535,7 +535,15 @@ pub enum PolicyRule {
 
 pub fn target_matches(target: &str, pattern: &str) -> bool {
     let pattern = pattern.trim();
+    if pattern.is_empty() {
+        return false;
+    }
+    // Catch-all wildcards: "*" or ".*" match any target.
+    if pattern == "*" || pattern == ".*" {
+        return true;
+    }
     if let Some(prefix) = pattern.strip_suffix('*') {
+        // Trailing-`*` => prefix match. A lone "*" is handled above.
         target.starts_with(prefix)
     } else {
         target == pattern

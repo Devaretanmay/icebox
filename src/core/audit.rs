@@ -1,5 +1,8 @@
-use sha2::{Digest, Sha256};
+use std::fs::{File, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
+
+use sha2::{Digest, Sha256};
 
 use serde::{Deserialize, Serialize};
 
@@ -48,24 +51,116 @@ impl AuditEntry {
 }
 
 /// Append-only, hash-chained audit ledger; tampering is detected at verify().
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+///
+/// When constructed with [`HashChain::with_path`], every `append` is durably
+/// written as one JSON line to disk (fsync'd) so the ledger survives restarts.
+/// On load the file is replayed line-by-line; a truncated final line (left by a
+/// crash mid-write) is tolerated and discarded, then the chain is verified.
+#[derive(Debug, Default)]
 pub struct HashChain {
     entries: Vec<AuditEntry>,
     head: String,
+    /// Durable sink. `None` => in-memory only (tests / no workspace).
+    file: Option<File>,
 }
 
 impl HashChain {
+    /// In-memory only ledger (no durability).
     pub fn new() -> Self {
         HashChain {
             entries: Vec::new(),
             head: GENESIS.to_string(),
+            file: None,
         }
+    }
+
+    /// Open (or create) a durable ledger at `path`. Parent dirs are created.
+    /// Replays any existing entries and verifies integrity on load.
+    pub fn with_path(path: impl AsRef<Path>) -> Result<Self, String> {
+        let path = path.as_ref().to_path_buf();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("audit dir create failed: {e}"))?;
+        }
+        let mut chain = HashChain {
+            entries: Vec::new(),
+            head: GENESIS.to_string(),
+            file: None,
+        };
+        if path.exists() {
+            let file = std::fs::File::open(&path).map_err(|e| format!("audit open failed: {e}"))?;
+            let reader = BufReader::new(file);
+            for line in reader.lines() {
+                let line = match line {
+                    Ok(l) => l,
+                    Err(_) => break, // truncated tail from a crash: stop replay
+                };
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                match serde_json::from_str::<AuditEntry>(line) {
+                    Ok(entry) => chain.entries.push(entry),
+                    Err(_) => break, // corrupted tail line: stop, keep verified prefix
+                }
+            }
+            if !chain.verify() {
+                return Err(format!(
+                    "audit ledger at {} failed integrity verification",
+                    path.display()
+                ));
+            }
+            chain.head = chain
+                .entries
+                .last()
+                .map(|e| e.hash.clone())
+                .unwrap_or_else(|| GENESIS.to_string());
+        }
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(|e| format!("audit open (append) failed: {e}"))?;
+        chain.file = Some(file);
+        Ok(chain)
+    }
+
+    /// Attach a durable sink to an already-populated in-memory chain,
+    /// continuing the hash chain from the current head. Used after restoring a
+    /// snapshot so subsequent appends remain both durable and chained.
+    pub fn attach_path(&mut self, path: impl AsRef<Path>) -> Result<(), String> {
+        let path = path.as_ref().to_path_buf();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("audit dir create failed: {e}"))?;
+        }
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(|e| format!("audit open (append) failed: {e}"))?;
+        self.file = Some(file);
+        Ok(())
     }
 
     pub fn append(&mut self, record: DecisionRecord) -> u64 {
         let seq = (self.entries.len() as u64) + 1;
         let entry = AuditEntry::new(seq, &self.head, record);
         self.head = entry.hash.clone();
+        if let Some(file) = self.file.as_mut() {
+            let line = serde_json::to_string(&entry).expect("audit entry serializes");
+            // One JSON line per entry; fsync so the ledger survives a crash.
+            let mut wrote = file.write_all(line.as_bytes());
+            if wrote.is_ok() {
+                wrote = file.write_all(b"\n");
+            }
+            if wrote.is_ok() {
+                let _ = file.flush();
+                let _ = file.sync_all();
+            }
+            if wrote.is_err() {
+                // Durability is a hard guarantee; surface failure loudly.
+                eprintln!("ERROR: audit ledger write failed: {wrote:?}");
+            }
+        }
         self.entries.push(entry);
         seq
     }
@@ -119,20 +214,70 @@ impl HashChain {
         true
     }
 
+    /// Serialize the full chain (used by workspace snapshot save/load).
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), String> {
-        let json = serde_json::to_string_pretty(self)
+        let snap = SerializableChain {
+            entries: self.entries.clone(),
+        };
+        let json = serde_json::to_string_pretty(&snap)
             .map_err(|e| format!("audit serialization failed: {e}"))?;
-        std::fs::write(path.as_ref(), json).map_err(|e| format!("audit write failed: {e}"))
+        // Atomic write: temp file + rename.
+        let path = path.as_ref();
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(&tmp, &json).map_err(|e| format!("audit write failed: {e}"))?;
+        std::fs::rename(&tmp, path).map_err(|e| format!("audit rename failed: {e}"))
     }
 
+    /// Restore a full chain (used by workspace snapshot load). In-memory only;
+    /// does not attach a durable file (use [`HashChain::with_path`] for that).
     pub fn load(path: impl AsRef<Path>) -> Result<Self, String> {
         if !path.as_ref().exists() {
             return Ok(HashChain::new());
         }
         let json = std::fs::read_to_string(path.as_ref())
             .map_err(|e| format!("audit read failed: {e}"))?;
-        serde_json::from_str(&json).map_err(|e| format!("audit parse failed: {e}"))
+        let snap: SerializableChain =
+            serde_json::from_str(&json).map_err(|e| format!("audit parse failed: {e}"))?;
+        let mut chain = HashChain {
+            entries: snap.entries,
+            head: GENESIS.to_string(),
+            file: None,
+        };
+        chain.head = chain
+            .entries
+            .last()
+            .map(|e| e.hash.clone())
+            .unwrap_or_else(|| GENESIS.to_string());
+        if !chain.verify() {
+            return Err("restored audit chain failed verification".into());
+        }
+        Ok(chain)
     }
+
+    /// Build an in-memory chain from existing entries (workspace snapshot).
+    pub fn from_entries(entries: Vec<AuditEntry>) -> Self {
+        let mut chain = HashChain {
+            entries,
+            head: GENESIS.to_string(),
+            file: None,
+        };
+        chain.head = chain
+            .entries
+            .last()
+            .map(|e| e.hash.clone())
+            .unwrap_or_else(|| GENESIS.to_string());
+        chain
+    }
+
+    pub fn entries_owned(&self) -> Vec<AuditEntry> {
+        self.entries.clone()
+    }
+}
+
+/// Serialization shape for the chain (excludes the open file handle).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SerializableChain {
+    entries: Vec<AuditEntry>,
 }
 
 impl From<&HashChain> for Vec<DecisionRecord> {

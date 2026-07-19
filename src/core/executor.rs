@@ -80,6 +80,13 @@ impl ModuleExecutor {
         }
     }
 
+    /// Make the audit ledger durable: replay any existing on-disk entries and
+    /// fsync every future decision. Safe to call before any decision is made.
+    pub fn set_audit_path(&mut self, path: impl AsRef<std::path::Path>) -> Result<(), String> {
+        self.audit = HashChain::with_path(path)?;
+        Ok(())
+    }
+
     pub fn policy(&self, context: PolicyContext) -> ConfigPolicy {
         let mut policy = make_config_policy(self.max_risk, context, &self.policy_set);
         if let Some(thr) = self.tier.cvss_threshold() {

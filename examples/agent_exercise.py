@@ -28,7 +28,7 @@ def setup():
     _post("/api/v1/policy/rules", {
         "require_approval": {
             "capability": "PrivilegeEscalation",
-            "target_pattern": ".*",
+            "target_pattern": "*",
         }
     })
 

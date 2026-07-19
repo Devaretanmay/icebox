@@ -872,7 +872,10 @@ async fn load_workspace(
     if !role_allows(fw.operator_role, Role::Operator) {
         return Err(StatusCode::FORBIDDEN);
     }
-    snap.apply_to_framework(&mut fw);
+    let audit_path = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(|h| std::path::Path::new(&h).join(".icebox/audit.jsonl"));
+    snap.apply_to_framework(&mut fw, audit_path.as_deref());
     Ok(Json(format!("loaded from {}", p.path)))
 }
 

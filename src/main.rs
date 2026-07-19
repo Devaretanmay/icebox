@@ -159,6 +159,13 @@ async fn build_framework() -> SharedFramework {
         RiskLevel::Critical,
     );
     executor.tier = Tier::Freezer;
+    if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
+        let audit_path = std::path::Path::new(&home).join(".icebox/audit.jsonl");
+        match executor.set_audit_path(&audit_path) {
+            Ok(_) => eprintln!("audit ledger: {}", audit_path.display()),
+            Err(e) => eprintln!("warn: audit ledger unavailable: {e}"),
+        }
+    }
     let fw = new_shared_framework(executor);
     if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
         let home = std::path::Path::new(&home);
@@ -505,7 +512,10 @@ async fn cmd_load(a: &[&str], fw: SharedFramework) {
     match icebox::core::workspace::WorkspaceSnapshot::load_from_file(&path) {
         Ok(snap) => {
             let mut fw = fw.lock().await;
-            snap.apply_to_framework(&mut fw);
+            let audit_path = std::env::var_os("HOME")
+                .or_else(|| std::env::var_os("USERPROFILE"))
+                .map(|h| std::path::Path::new(&h).join(".icebox/audit.jsonl"));
+            snap.apply_to_framework(&mut fw, audit_path.as_deref());
             println!("loaded from {path}");
         }
         Err(e) => println!("load error: {e}"),
@@ -647,7 +657,10 @@ async fn cmd_validate(a: &[&str], fw: SharedFramework) {
                 match icebox::core::workspace::WorkspaceSnapshot::load_from_file(path) {
                     Ok(snap) => {
                         let mut g = fw.lock().await;
-                        snap.apply_to_framework(&mut g);
+                        let audit_path = std::env::var_os("HOME")
+                            .or_else(|| std::env::var_os("USERPROFILE"))
+                            .map(|h| std::path::Path::new(&h).join(".icebox/audit.jsonl"));
+                        snap.apply_to_framework(&mut g, audit_path.as_deref());
                         println!("validate: loaded workspace {path}");
                     }
                     Err(e) => {

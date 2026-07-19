@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::core::audit::{AuditEntry, HashChain};
 use crate::core::framework::Framework;
 use crate::core::governance::PolicyPackStore;
 use crate::core::job::{Job, JobId, JobManager, JobStatus};
@@ -17,6 +18,8 @@ pub struct WorkspaceSnapshot {
     pub memories: Vec<MemoryEntry>,
     pub jobs: Vec<JobSnapshot>,
     pub sessions: Vec<SessionSnapshot>,
+    /// Full audit ledger, captured so `save`/`load` preserves the trail.
+    pub audit_entries: Vec<AuditEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,6 +79,7 @@ impl WorkspaceSnapshot {
             memories: fw.executor.memories.clone(),
             jobs,
             sessions,
+            audit_entries: fw.executor.audit.entries_owned(),
         }
     }
 
@@ -92,13 +96,19 @@ impl WorkspaceSnapshot {
         Ok(snap)
     }
 
-    pub fn apply_to_framework(&self, fw: &mut Framework) {
+    pub fn apply_to_framework(&self, fw: &mut Framework, audit_path: Option<&std::path::Path>) {
         fw.executor.charter = self.charter.clone();
         fw.executor.scope = ScopeManager::new(self.scope_allow.clone());
         fw.executor.max_risk = self.max_risk;
         fw.executor.policy_set = self.policy_rules.clone();
         fw.policy_packs = self.policy_packs.clone();
         fw.executor.memories = self.memories.clone();
+        // Restore the audit ledger, re-attaching durability if a sink exists.
+        let mut restored = HashChain::from_entries(self.audit_entries.clone());
+        if let Some(p) = audit_path {
+            let _ = restored.attach_path(p);
+        }
+        fw.executor.audit = restored;
         let max_job_id = self.jobs.iter().map(|j| j.id).max().unwrap_or(0);
         for js in &self.jobs {
             let mut j = Job::new(&js.module_name, &js.target);
@@ -130,6 +140,7 @@ impl Default for WorkspaceSnapshot {
             memories: Vec::new(),
             jobs: Vec::new(),
             sessions: Vec::new(),
+            audit_entries: Vec::new(),
         }
     }
 }
