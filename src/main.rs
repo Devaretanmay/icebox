@@ -128,9 +128,6 @@ async fn apply_onboarding(fw: &SharedFramework, home: &std::path::Path) {
     if !o.profile.is_empty() {
         lock.executor.charter = Charter::accept(o.profile.clone(), vec!["authorized".into()]);
     }
-    if lock.executor.scope.allow.is_empty() {
-        lock.executor.scope = ScopeManager::new(vec!["0.0.0.0/0".into()]);
-    }
     let tier = match o.profile.as_str() {
         "safe" | "balanced" => Tier::Freezer,
         "advanced" => Tier::Fridge,
