@@ -708,6 +708,7 @@ async fn accept_charter(
         return Json("forbidden: operator role required".into());
     }
     fw.executor.charter = Charter::accept(payload.engagement.clone(), vec![]);
+    fw.persist_state();
     Json("accepted".into())
 }
 
@@ -725,6 +726,7 @@ async fn add_scope(
         return Json("forbidden: operator role required".into());
     }
     fw.executor.scope.allow.push(payload.target);
+    fw.persist_state();
     Json("added".into())
 }
 
@@ -810,6 +812,7 @@ async fn add_policy_rule(
         return Json(fw.executor.policy_set.clone());
     }
     fw.executor.policy_set.add_rule(rule);
+    fw.persist_state();
     Json(fw.executor.policy_set.clone())
 }
 
@@ -822,6 +825,7 @@ async fn replace_policy_rules(
         return Json(fw.executor.policy_set.clone());
     }
     fw.executor.policy_set.set_rules(rules);
+    fw.persist_state();
     Json(fw.executor.policy_set.clone())
 }
 
@@ -834,7 +838,10 @@ async fn delete_policy_rule(
         return Err(StatusCode::FORBIDDEN);
     }
     match fw.executor.policy_set.remove_rule(index) {
-        Some(_) => Ok(Json(fw.executor.policy_set.clone())),
+        Some(_) => {
+            fw.persist_state();
+            Ok(Json(fw.executor.policy_set.clone()))
+        }
         None => Err(StatusCode::NOT_FOUND),
     }
 }
@@ -922,6 +929,7 @@ async fn apply_policy_pack(
         None => return Err(StatusCode::NOT_FOUND),
     };
     fw.executor.policy_set.set_rules(pack.rules.clone());
+    fw.persist_state();
     Ok(Json(fw.executor.policy_set.clone()))
 }
 

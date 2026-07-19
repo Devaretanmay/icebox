@@ -729,4 +729,42 @@ mod tests {
         assert!(result.is_err(), "out-of-scope target must be denied");
         assert_eq!(exec.stage, GeeStage::Request);
     }
+
+    /// Category 3 (sandbox): when the sandbox is required by tier but
+    /// unavailable, execution MUST be refused (fail-closed) — never run the
+    /// module unsandboxed. This is the core sandbox-safety guarantee.
+    #[tokio::test]
+    async fn execute_refuses_when_sandbox_unavailable() {
+        let mut exec = ModuleExecutor::new(
+            Charter::accept("test", vec!["auth".into()]),
+            ScopeManager::new(vec!["127.0.0.1".into()]),
+            RiskLevel::Critical,
+        );
+        // Freezer requires a sandbox; with no worker binary it is unavailable.
+        exec.tier = Tier::Freezer;
+        // Pre-approve and in-scope so the only blocker is the sandbox itself.
+        let mut loaded = crate::modules::load("tcp_port_scanner").expect("module");
+        let _ = loaded.module.set_option("host", "127.0.0.1");
+        let _ = loaded.module.set_option("ports", "22");
+        let result = exec
+            .execute(
+                &mut loaded,
+                "127.0.0.1",
+                None,
+                true,
+                PolicyContext::Cli,
+                None,
+                None,
+            )
+            .await;
+        assert!(
+            matches!(result, Err(ExecutorError::Sandbox(_))),
+            "sandbox failure must block execution, not run unsandboxed: {result:?}"
+        );
+        // Stage must roll back; no partial execution.
+        assert_eq!(exec.stage, GeeStage::Request);
+        // A denial (not an approval) must be on the audit trail.
+        assert!(!exec.audit.is_empty());
+        assert!(exec.verify_audit());
+    }
 }

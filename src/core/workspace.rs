@@ -148,3 +148,47 @@ impl Default for WorkspaceSnapshot {
         }
     }
 }
+
+/// The auto-persisted governance state: charter, scope, policy, and policy
+/// packs. Written atomically on every change so a restart recovers the same
+/// guardrails without an explicit `save`. Audit is persisted separately
+/// (durable ledger); jobs/sessions/memories are not part of durable state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GovernanceState {
+    pub charter: Charter,
+    pub scope_allow: Vec<String>,
+    pub policy_rules: PolicySet,
+    pub policy_packs: PolicyPackStore,
+}
+
+impl GovernanceState {
+    pub fn from_framework(fw: &Framework) -> Self {
+        GovernanceState {
+            charter: fw.executor.charter.clone(),
+            scope_allow: fw.executor.scope.allow.clone(),
+            policy_rules: fw.executor.policy_set.clone(),
+            policy_packs: fw.policy_packs.clone(),
+        }
+    }
+
+    /// Atomically persist (temp file + rename) to `path`.
+    pub fn save_to_file(&self, path: &str) -> Result<(), crate::core::WorkspaceError> {
+        let json = serde_json::to_string_pretty(self).map_err(crate::core::WorkspaceError::Json)?;
+        let tmp = format!("{path}.tmp");
+        std::fs::write(&tmp, &json).map_err(crate::core::WorkspaceError::Io)?;
+        std::fs::rename(&tmp, path).map_err(crate::core::WorkspaceError::Io)?;
+        Ok(())
+    }
+
+    pub fn load_from_file(path: &str) -> Result<Self, crate::core::WorkspaceError> {
+        let json = std::fs::read_to_string(path).map_err(crate::core::WorkspaceError::Io)?;
+        serde_json::from_str(&json).map_err(crate::core::WorkspaceError::Json)
+    }
+
+    pub fn apply_to_framework(&self, fw: &mut Framework) {
+        fw.executor.charter = self.charter.clone();
+        fw.executor.scope = ScopeManager::new(self.scope_allow.clone());
+        fw.executor.policy_set = self.policy_rules.clone();
+        fw.policy_packs = self.policy_packs.clone();
+    }
+}

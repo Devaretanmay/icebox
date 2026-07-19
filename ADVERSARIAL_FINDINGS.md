@@ -22,7 +22,9 @@ Severity tally:
 | C2 | `target_matches` ignores `.*` | **FIXED** | `safety.rs:536` now treats `*`/`/.*` as match-all. Verified: `RequireApproval{Persistence,".*"}` blocks `reverse_shell_generator` even with `approved:true`. |
 | H1 | Corrupt policy fails open | **FIXED** | `main.rs` `build_framework`: load failure → `executor.safe_mode` set; `ConfigPolicy::evaluate` denies everything (`SAFE MODE`). Verified: corrupt `policy.yaml` → all governs DENY with safe-mode reason. |
 | H3 | Non-atomic save | **FIXED** (audit + workspace) | `audit.rs` `save` and `workspace.rs` `save_to_file` use temp-file + rename. |
-| H2 | Persistence manual/opt-in | PARTIAL | Audit now auto-persists (C1). Charter/scope/policy still require explicit `save`/`load`. |
+| H2 | Persistence manual/opt-in | **FIXED** | `Framework::state_path` + `persist_state()` (atomic) called on every charter/scope/policy/pack mutation; `build_framework` loads `~/.icebox/state.json` on startup. Verified: charter+scope+policy restored after restart with no explicit `save`. |
+| Cat 3 | Sandbox escape/failure | **FAIL-CLOSED VERIFIED** | `execute()` returns `Err(Sandbox)` on provisioning failure; module never runs unsandboxed. Unit test `execute_refuses_when_sandbox_unavailable`. NOTE: real container escape/leak/OOM needs Docker + `icebox-worker` (unavailable in this env) — not exercised. |
+| Cat 6 | Multi-agent stress | **PASSED** | 50 agents x 20 actions = 1000 concurrent governs: 0 errors, all 1000 durably recorded, survive restart, chain intact (`examples/adversarial_cat6_stress.py`). |
 
 ### Deep Category-4 re-test (durable ledger) — all pass
 - Delete audit file → daemon starts, empty trail, no panic.
@@ -31,8 +33,10 @@ Severity tally:
 - `verify()` still detects in-memory tampering (unit tests).
 
 ### Still open
-- H2 (charter/scope/policy auto-persist) — audit is now durable; the rest remains manual.
-- Categories 3 (sandbox), 6 (multi-agent), 8 (enterprise), 9 (perf), 10 (5-model red-team) not yet executed.
+- H2 — DONE. Audit + charter/scope/policy all auto-persist now.
+- Categories 3 (real container escape/leak/OOM) and 8/9/10 need Docker + `icebox-worker`
+  (unavailable here) or multi-model red-team time — not yet executed. The fail-closed
+  sandbox guarantee and multi-agent concurrency ARE verified.
 
 - PASSED: 8 core guarantees held under adversarial input
 

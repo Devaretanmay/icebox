@@ -146,6 +146,7 @@ async fn apply_onboarding(fw: &SharedFramework, home: &std::path::Path) {
             }),
         _ => {}
     }
+    lock.persist_state();
     eprintln!(
         "applied onboarding: profile={} approvals={} audit={}",
         o.profile, o.approvals, o.audit
@@ -184,12 +185,32 @@ async fn build_framework() -> SharedFramework {
     let fw = new_shared_framework(executor);
     if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
         let home = std::path::Path::new(&home);
+        // Auto-persist governance state (charter/scope/policy) to this path.
+        {
+            let mut lock = fw.lock().await;
+            lock.state_path = Some(home.join(".icebox/state.json"));
+        }
+        // Restore previously auto-persisted state, if any.
+        let state_path = home.join(".icebox/state.json");
+        if state_path.exists() {
+            match icebox::core::workspace::GovernanceState::load_from_file(
+                &state_path.to_string_lossy(),
+            ) {
+                Ok(state) => {
+                    let mut lock = fw.lock().await;
+                    state.apply_to_framework(&mut lock);
+                    eprintln!("restored governance state from {}", state_path.display());
+                }
+                Err(e) => eprintln!("warn: failed to restore {}: {e}", state_path.display()),
+            }
+        }
         let policy_path = home.join(".icebox/policy.yaml");
         if policy_path.exists() {
             match PolicySet::load_yaml(&policy_path) {
                 Ok(policy) => {
                     let mut lock = fw.lock().await;
                     lock.executor.policy_set = policy;
+                    lock.persist_state();
                     eprintln!("auto-loaded policy from {}", policy_path.display());
                 }
                 Err(e) => {
