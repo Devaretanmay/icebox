@@ -98,6 +98,13 @@ struct ScopePayload {
     target: String,
 }
 
+#[derive(Deserialize)]
+struct RecordPayload {
+    action: GovernAction,
+    outcome: ActionOutcome,
+    decision: Option<String>,
+}
+
 #[derive(Serialize)]
 struct SessionItem {
     id: u64,
@@ -1182,10 +1189,10 @@ async fn govern_handler(
 
 async fn record_handler(
     State(fw): State<SharedFramework>,
-    Json(payload): Json<(GovernAction, ActionOutcome, Option<String>)>,
+    Json(payload): Json<RecordPayload>,
 ) -> Result<Json<RecordResult>, StatusCode> {
     let mut guard = fw.lock().await;
-    let decision = match payload.2 {
+    let decision = match payload.decision {
         Some(ref s) => s.parse().map_err(|_: String| StatusCode::BAD_REQUEST)?,
         None => {
             return Err(StatusCode::BAD_REQUEST);
@@ -1193,6 +1200,6 @@ async fn record_handler(
     };
     let result = guard
         .executor
-        .record_action(&payload.0, payload.1, decision);
+        .record_action(&payload.action, payload.outcome, decision);
     Ok(Json(result))
 }

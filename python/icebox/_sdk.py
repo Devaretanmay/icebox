@@ -230,7 +230,10 @@ class GovernClient:
                       "require_approval". Defaults to "allow" only for
                       backward compatibility; always pass the real value.
         """
-        return self._post("/api/v1/govern/record", (action, outcome, decision))
+        return self._post(
+            "/api/v1/govern/record",
+            {"action": action, "outcome": outcome, "decision": decision},
+        )
 
 
 class GovernedSession:
