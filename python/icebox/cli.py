@@ -1,82 +1,82 @@
 import sys
 import os
-import subprocess
-import time
+import json
 
-def print_header():
-    print("=" * 60)
-    print("Welcome to ICEBOX".center(60))
-    print("=" * 60)
-    print()
-
-def check_command(cmd, name):
-    try:
-        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-        print(f" [PASS] {name} is installed.")
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        print(f" [FAIL] {name} is NOT installed or not in PATH.")
-        return False
-
-def prompt_yes_no(prompt):
+def _menu(prompt, options):
+    print(prompt)
+    for i, label in enumerate(options, 1):
+        print(f"{i}. {label}")
     while True:
-        resp = input(f"{prompt} [Y/n]: ").strip().lower()
-        if resp in ("", "y", "yes"):
-            return True
-        if resp in ("n", "no"):
-            return False
+        resp = input("> ").strip()
+        if resp.isdigit() and 1 <= int(resp) <= len(options):
+            return int(resp)
+        print(f"Please enter a number between 1 and {len(options)}.")
+
+def _save(onboard):
+    path = os.path.expanduser("~/.icebox/onboard.json")
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as fh:
+            json.dump(onboard, fh)
+    except OSError:
+        pass
 
 def interactive_setup():
-    print_header()
-    print("Welcome, let's get your ICEBOX environment set up.\n")
+    print("-" * 48)
+    print("Welcome to ICEBOX")
+    print()
+    print("ICEBOX safely governs autonomous security actions.")
+    print()
+    print("Let's get you set up.")
+    print("-" * 48)
+    print()
 
-    print("Checking dependencies...")
-    has_docker = check_command(["docker", "--version"], "Docker")
-    has_cargo = check_command(["cargo", "--version"], "Cargo (Rust)")
-    has_daemon = check_command(["icebox-daemon", "--version"], "ICEBOX Daemon")
+    use = _menu(
+        "What are you using ICEBOX for?",
+        ["Autonomous Security Agents", "Security Automation Scripts",
+         "Security Research", "Custom"],
+    )
 
-    print("\n" + "-" * 60 + "\n")
+    profile = _menu(
+        "Select a safety profile.",
+        ["Safe (Recommended)", "Balanced", "Advanced"],
+    )
 
-    if not has_docker:
-        print("[WARNING] Docker is missing.")
-        print("          ICEBOX requires Docker for mandatory target sandboxing.")
-        print("          Please install Docker Desktop: https://www.docker.com/products/docker-desktop/\n")
-    
-    if not has_cargo:
-        print("[WARNING] Cargo (Rust toolchain) is missing.")
-        print("          ICEBOX requires Rust to compile and install the core daemon.")
-        print("          Install it via: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh\n")
+    approval = _menu(
+        "Do you want approval before dangerous actions are executed?",
+        ["Always", "High Risk Only (Recommended)", "Never"],
+    )
 
-    if has_cargo and not has_daemon:
-        print("[SETUP] ICEBOX Daemon is not installed.")
-        if prompt_yes_no("Would you like to install it now via 'cargo install icebox-gov'?"):
-            print("\nInstalling ICEBOX Daemon (this may take a minute)...")
-            try:
-                subprocess.run(["cargo", "install", "icebox-gov"], check=True)
-                print("\n[SUCCESS] ICEBOX Daemon successfully installed as 'icebox-daemon'!\n")
-                has_daemon = True
-            except subprocess.CalledProcessError:
-                print("\n[ERROR] Failed to install ICEBOX Daemon. Please try running 'cargo install icebox-gov' manually.\n")
-    
-    if has_docker and has_cargo and has_daemon:
-        print("[SUCCESS] Your ICEBOX environment is fully configured!\n")
-        print("ICEBOX governs your autonomous agents through three core restriction modes:\n")
-        print("  - The Fridge (Low Restriction)")
-        print("      Agents run with broad scope and minimal human oversight.")
-        print("      Ideal for safe, read-only reconnaissance.\n")
-        print("  - The Freezer (Medium Restriction)")
-        print("      Agents are strictly sandboxed.")
-        print("      CVSS limits are enforced and out-of-scope targets are blocked.\n")
-        print("  - The Deep Freezer (High Restriction)")
-        print("      Every destructive action requires explicit human approval.")
-        print("      Ideal for sensitive or production environments.\n")
-        print("To start the REST API and Governance engine, run:")
-        print("  icebox --api")
-        print("\nTo launch the interactive CLI orchestrator, run:")
-        print("  icebox --cli")
-        print("\n(Note: any arguments passed to 'icebox' are directly forwarded to the 'icebox-daemon').")
-    else:
-        print("[ERROR] Setup is incomplete. Please resolve the missing dependencies and run 'icebox' again.")
+    audit = _menu(
+        "Enable audit logging?",
+        ["Yes (Recommended)", "No"],
+    )
+
+    _save({
+        "use_case": ["agents", "automation", "research", "custom"][use - 1],
+        "profile": ["safe", "balanced", "advanced"][profile - 1],
+        "approvals": ["always", "high_risk_only", "never"][approval - 1],
+        "audit": audit == 1,
+    })
+
+    print("-" * 48)
+    print()
+    print("ICEBOX is ready.")
+    print()
+    print("Your configuration:")
+    print(f"Safety Profile: {['Safe', 'Balanced', 'Advanced'][profile - 1]}")
+    print(f"Approvals: {['Always', 'High Risk Only', 'Never'][approval - 1]}")
+    print(f"Audit Logging: {['Enabled', 'Disabled'][audit - 1]}")
+    print()
+    print("-" * 48)
+    print()
+    print("You are ready to govern autonomous security actions.")
+    print()
+    print("Run:")
+    print()
+    print("icebox govern")
+    print()
+    print("-" * 48)
 
 def main():
     # With args, proxy transparently to icebox-daemon; else run the wizard.
