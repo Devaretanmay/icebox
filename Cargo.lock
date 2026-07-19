@@ -646,7 +646,7 @@ dependencies = [
 
 [[package]]
 name = "icebox-client"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "reqwest",
  "serde",
@@ -656,7 +656,7 @@ dependencies = [
 
 [[package]]
 name = "icebox-gov"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -689,7 +689,7 @@ dependencies = [
 
 [[package]]
 name = "icebox-macro"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -698,7 +698,7 @@ dependencies = [
 
 [[package]]
 name = "icebox-py"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "anyhow",
  "icebox-gov",

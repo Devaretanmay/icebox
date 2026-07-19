@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use serde::Deserialize;
+
 const COLOR_ORANGE: &str = "\x1b[38;2;232;84;42m";
 const COLOR_TEAL: &str = "\x1b[38;2;46;140;147m";
 const COLOR_SLATE: &str = "\x1b[38;2;74;92;104m";
@@ -22,6 +24,32 @@ struct CliState {
     fw: SharedFramework,
     loaded: Option<LoadedModule>,
     target: Option<String>,
+}
+
+async fn run_govern(args: &[String]) -> anyhow::Result<()> {
+    let fw = build_framework().await;
+    let json = if let Some(pos) = args.iter().position(|a| a == "govern") {
+        let rest = &args[pos + 1..];
+        if !rest.is_empty() {
+            rest.join(" ")
+        } else {
+            use std::io::Read;
+            let mut buf = String::new();
+            std::io::stdin().read_to_string(&mut buf)?;
+            buf
+        }
+    } else {
+        use std::io::Read;
+        let mut buf = String::new();
+        std::io::stdin().read_to_string(&mut buf)?;
+        buf
+    };
+    let action: icebox::core::sdk::GovernAction = serde_json::from_str(json.trim())
+        .map_err(|e| anyhow::anyhow!("invalid GovernAction JSON: {e}"))?;
+    let mut lock = fw.lock().await;
+    let result = lock.executor.govern_action(&action, PolicyContext::Cli);
+    println!("{}", serde_json::to_string(&result)?);
+    Ok(())
 }
 
 async fn run_worker(args: &[String]) -> anyhow::Result<()> {
@@ -78,6 +106,81 @@ async fn run_worker(args: &[String]) -> anyhow::Result<()> {
     }
 }
 
+#[derive(Deserialize, Default)]
+struct Onboarding {
+    #[serde(default)]
+    profile: String,
+    #[serde(default)]
+    approvals: String,
+    #[serde(default)]
+    audit: bool,
+}
+
+async fn apply_onboarding(fw: &SharedFramework, home: &std::path::Path) {
+    let path = home.join(".icebox/onboard.json");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let Ok(o) = serde_json::from_str::<Onboarding>(&text) else {
+        return;
+    };
+    let mut lock = fw.lock().await;
+    if !o.profile.is_empty() {
+        lock.executor.charter = Charter::accept(o.profile.clone(), vec!["authorized".into()]);
+    }
+    if lock.executor.scope.allow.is_empty() {
+        lock.executor.scope = ScopeManager::new(vec!["0.0.0.0/0".into()]);
+    }
+    let tier = match o.profile.as_str() {
+        "safe" | "balanced" => Tier::Freezer,
+        "advanced" => Tier::Fridge,
+        _ => lock.executor.tier,
+    };
+    lock.executor.tier = tier;
+    match o.approvals.as_str() {
+        "always" => lock.executor.tier = Tier::DeepFreeze,
+        "high_risk_only" => lock
+            .executor
+            .policy_set
+            .add_rule(PolicyRule::RequireApprovalIf {
+                cvss_above: Some(7.0),
+                epss_above: None,
+                kev: false,
+            }),
+        _ => {}
+    }
+    eprintln!(
+        "applied onboarding: profile={} approvals={} audit={}",
+        o.profile, o.approvals, o.audit
+    );
+}
+
+async fn build_framework() -> SharedFramework {
+    let mut executor = ModuleExecutor::new(
+        Charter::default(),
+        ScopeManager::default(),
+        RiskLevel::Critical,
+    );
+    executor.tier = Tier::Freezer;
+    let fw = new_shared_framework(executor);
+    if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
+        let home = std::path::Path::new(&home);
+        let policy_path = home.join(".icebox/policy.yaml");
+        if policy_path.exists() {
+            match PolicySet::load_yaml(&policy_path) {
+                Ok(policy) => {
+                    let mut lock = fw.lock().await;
+                    lock.executor.policy_set = policy;
+                    eprintln!("auto-loaded policy from {}", policy_path.display());
+                }
+                Err(e) => eprintln!("warn: failed to load {}: {e}", policy_path.display()),
+            }
+        }
+        apply_onboarding(&fw, home).await;
+    }
+    fw
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -91,6 +194,7 @@ async fn main() -> anyhow::Result<()> {
         println!("USAGE:");
         println!("  icebox            Start interactive REPL + REST API (http://127.0.0.1:8443)");
         println!("  icebox --api     Start the REST API only");
+        println!("  icebox govern    Govern one action (GovernAction JSON on stdin/stdout)");
         println!("  icebox --no-auth Start without REST authentication (local dev only)");
         println!("  icebox --auth-token <t>  Use explicit REST auth token");
         println!("  icebox --version  Print version and exit");
@@ -100,6 +204,9 @@ async fn main() -> anyhow::Result<()> {
     if let Some(pos) = args.iter().position(|a| a == "worker") {
         return run_worker(&args[pos + 1..]).await;
     }
+    if args.iter().any(|a| a == "govern") {
+        return run_govern(&args).await;
+    }
     let api_only = args.iter().any(|a| a == "--api");
     let no_auth = args.iter().any(|a| a == "--no-auth");
     let auth_token = args
@@ -107,26 +214,7 @@ async fn main() -> anyhow::Result<()> {
         .position(|a| a == "--auth-token")
         .and_then(|i| args.get(i + 1).cloned());
     let auth = icebox::interfaces::rest::resolve_auth(no_auth, auth_token);
-    let mut executor = ModuleExecutor::new(
-        Charter::default(),
-        ScopeManager::default(),
-        RiskLevel::Critical,
-    );
-    executor.tier = Tier::Freezer;
-    let fw = new_shared_framework(executor);
-    if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
-        let auto_path = std::path::Path::new(&home).join(".icebox/policy.yaml");
-        if auto_path.exists() {
-            match PolicySet::load_yaml(&auto_path) {
-                Ok(policy) => {
-                    let mut lock = fw.blocking_lock();
-                    lock.executor.policy_set = policy;
-                    eprintln!("auto-loaded policy from {}", auto_path.display());
-                }
-                Err(e) => eprintln!("warn: failed to load {}: {e}", auto_path.display()),
-            }
-        }
-    }
+    let fw = build_framework().await;
     let state = Arc::new(Mutex::new(CliState {
         fw: fw.clone(),
         loaded: None,
