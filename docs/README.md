@@ -2,6 +2,9 @@
 
 The whole product fits on the README. Start there: [`README.md`](../README.md).
 
+For how the codebase is structured around one irreducible primitive, see
+[`ARCHITECTURE.md`](ARCHITECTURE.md).
+
 ## The two ideas
 
 1. **Protect something** — `icebox init` sets up the guardrails.
@@ -34,15 +37,17 @@ the action in plain words.
 
 ```python
 govern(action, target=None, capability=None, impact="low",
-       destructive=False, verbose=True) -> GovernResult
+       destructive=False, verbose=True, url="http://127.0.0.1:8443",
+       token=None) -> GovernResult
 ```
 
-- `action`: what the agent wants to do, in plain words.
+- `action`: what the agent wants to do, in plain words (positional).
 - `target`: what it acts on (a host, account, or scope name).
-- `capability`: usually omitted — ICEBOX infers it.
+- `capability`: usually omitted — ICEBOX infers it from `action`.
 - `impact`: `"low" | "medium" | "high" | "critical"`.
 - `destructive`: `True` if the action can't be undone.
-- `verbose`: print a short notice when an action is held or blocked.
+- `verbose`: print a single calm notice when an action is held or blocked.
+- `url` / `token`: daemon connection (optional; uses the local daemon).
 
 `GovernResult` is truthy when allowed, so `if govern(...):` reads naturally.
 It also exposes `.allowed`, `.decision` (`allow` / `require_approval` /
