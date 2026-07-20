@@ -15,7 +15,7 @@ async fn test_sandbox_docker_lifecycle() {
         println!("Skipping docker lifecycle test because daemon is unavailable");
         return;
     }
-    let sandbox = DockerSandbox::freeze("127.0.0.1", "alpine:3.20")
+    let sandbox = DockerSandbox::freeze("127.0.0.1", "alpine:3.20", None)
         .await
         .expect("freeze");
     assert!(!sandbox.container_id().is_empty());

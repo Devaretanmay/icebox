@@ -37,10 +37,11 @@ impl Sandbox {
         engine: SandboxEngineType,
         target: &str,
         image: &str,
+        limits: Option<crate::core::plugins::ResourceLimits>,
     ) -> Result<Self, SandboxError> {
         match engine {
             SandboxEngineType::Docker => {
-                Ok(Sandbox::Docker(DockerSandbox::freeze(target, image).await?))
+                Ok(Sandbox::Docker(DockerSandbox::freeze(target, image, limits).await?))
             }
         }
     }
@@ -167,7 +168,11 @@ impl DockerSandbox {
             .is_ok()
     }
 
-    pub async fn freeze(target: &str, image: &str) -> Result<Self, SandboxError> {
+    pub async fn freeze(
+        target: &str,
+        image: &str,
+        limits: Option<crate::core::plugins::ResourceLimits>,
+    ) -> Result<Self, SandboxError> {
         let docker =
             Docker::connect_with_local_defaults().map_err(|_| SandboxError::Unavailable)?;
         docker.ping().await.map_err(|_| SandboxError::Unavailable)?;
@@ -178,12 +183,17 @@ impl DockerSandbox {
 
         let cmd = Some(vec!["sleep".to_string(), "3600".to_string()]);
 
-        let config = ContainerCreateBody {
+        let mut config = ContainerCreateBody {
             image: Some(image.to_string()),
             cmd,
             hostname: Some("icebox-sandbox".to_string()),
             ..Default::default()
         };
+        if let Some(limits) = limits {
+            if let Some(hc) = limits.host_config() {
+                config.host_config = Some(hc);
+            }
+        }
 
         let resp = docker
             .create_container(

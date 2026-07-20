@@ -34,6 +34,8 @@ pub mod sandbox;
 
 pub mod proxy;
 
+pub mod plugins;
+
 #[derive(Debug, thiserror::Error)]
 pub enum WorkspaceError {
     #[error("I/O error: {0}")]

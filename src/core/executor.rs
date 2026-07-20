@@ -349,7 +349,7 @@ impl ModuleExecutor {
             use crate::core::sandbox::Sandbox;
             let se = engine.unwrap_or(crate::core::sandbox::SandboxEngineType::Docker);
             let image = "icebox-sandbox:latest".to_string();
-            match Sandbox::freeze(se, target, &image).await {
+            match Sandbox::freeze(se, target, &image, None).await {
                 Ok(s) => {
                     info!(
                         container = %s.container_id(),
