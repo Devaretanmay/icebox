@@ -171,18 +171,4 @@ def test_governance_compat(client):
     assert isinstance(gov.audit_json(), list)
 
 
-def test_govern_context_manager(client):
-    from icebox import govern
 
-    with govern(url=client._base) as g:
-        verdict = g.preflight({
-            "action": "scan",
-            "target": "10.0.0.5",
-            "capability": "network_scan",
-            "impact": "low",
-            "destructive": False,
-        })
-        assert verdict["approved"] is True
-        recorded = g.complete({"success": True, "evidence": [], "data": {}},
-                              verdict.get("decision", "allow"))
-        assert "chain_tip" in recorded

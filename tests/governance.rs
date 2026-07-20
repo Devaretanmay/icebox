@@ -114,7 +114,7 @@ fn cvss_deny_above_threshold() {
     let req = PolicyRequest {
         target: "10.0.0.5".into(),
         capabilities: vec![Capability::NetworkScan],
-            requested_capability: None,
+        requested_capability: None,
         impact: RiskLevel::Low,
         destructive: false,
         charter_accepted: true,
@@ -164,7 +164,7 @@ fn cvss_require_approval_above_threshold() {
     let req = PolicyRequest {
         target: "10.0.0.5".into(),
         capabilities: vec![Capability::NetworkScan],
-            requested_capability: None,
+        requested_capability: None,
         impact: RiskLevel::Low,
         destructive: false,
         charter_accepted: true,
@@ -211,7 +211,7 @@ fn cvss_epss_triggers_approval() {
     let req = PolicyRequest {
         target: "10.0.0.5".into(),
         capabilities: vec![Capability::NetworkScan],
-            requested_capability: None,
+        requested_capability: None,
         impact: RiskLevel::Low,
         destructive: false,
         charter_accepted: true,
@@ -247,7 +247,7 @@ fn cvss_kev_triggers_approval() {
     let req = PolicyRequest {
         target: "10.0.0.5".into(),
         capabilities: vec![Capability::NetworkScan],
-            requested_capability: None,
+        requested_capability: None,
         impact: RiskLevel::Low,
         destructive: false,
         charter_accepted: true,

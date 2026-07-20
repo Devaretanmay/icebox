@@ -279,11 +279,15 @@ async fn main() -> anyhow::Result<()> {
         rt.block_on(async { icebox::interfaces::rest::serve(fw_api, addr, auth).await })
     });
     if no_auth {
-        eprintln!("\x1b[31m!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\x1b[0m");
+        eprintln!(
+            "\x1b[31m!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\x1b[0m"
+        );
         eprintln!("\x1b[31m!! WARNING: REST API AUTH DISABLED (--no-auth).            !!\x1b[0m");
         eprintln!("\x1b[31m!! Anyone who can reach {addr} can mutate policy, scope,    !!\x1b[0m");
         eprintln!("\x1b[31m!! charter, and run modules. Local development only.       !!\x1b[0m");
-        eprintln!("\x1b[31m!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\x1b[0m");
+        eprintln!(
+            "\x1b[31m!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\x1b[0m"
+        );
         eprintln!("REST API http://{addr}/api/v1  (AUTH DISABLED --no-auth)");
     } else {
         eprintln!("REST API http://{addr}/api/v1  (Bearer token in ~/.icebox/auth.token)");
@@ -315,13 +319,7 @@ async fn main() -> anyhow::Result<()> {
         let fw_arc = s.fw.clone();
         if matches!(
             c.as_str(),
-            "save"
-                | "load"
-                | "role"
-                | "pack"
-                | "approve"
-                | "proxy"
-                | "tier"
+            "save" | "load" | "role" | "pack" | "approve" | "proxy" | "tier"
         ) {
             drop(s);
             match c.as_str() {
