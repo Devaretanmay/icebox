@@ -38,9 +38,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install maturin + deps
-        run: pip install maturin pytest
+      - name: Create venv + install maturin + pytest
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install -U pip maturin pytest
       - name: Build extension + install SDK (editable)
-        run: maturin develop
+        run: |
+          . .venv/bin/activate
+          maturin develop
       - name: Python SDK tests
-        run: pytest tests/test_sdk.py -q
+        run: |
+          . .venv/bin/activate
+          pytest tests/test_sdk.py -q
