@@ -64,7 +64,7 @@ The following are **in scope** for security reports:
 - Evidence provenance and integrity (`icebox::core` evidence)
 - RBAC enforcement (all crates)
 - REST API authentication and authorization (`icebox::interfaces`)
-- C ABI / SDK integrity (`libicebox`, `python/icebox`)
+- SDK integrity (`python/icebox`)
 - Supply chain (compromised dependencies)
 
 The following are **out of scope**:

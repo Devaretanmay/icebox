@@ -164,25 +164,11 @@ class IceboxClient:
 
 
 class GovernClient:
-    """Governance SDK client — the \"Stripe for governed execution\" single-call interface.
+    """Low-level client for the ICEBOX daemon.
 
-    Wraps any autonomous action in a Governed Execution Environment (GEE)
-    with one API call. Every action is policy-evaluated, scope-enforced,
-    approval-gated, audited, and evidence-collected automatically.
-
-    Usage:
-
-        client = GovernClient()
-        result = client.govern({
-            \"action\": \"scan_network\",
-            \"target\": \"10.0.0.0/24\",
-            \"capability\": \"network_scan\",
-            \"impact\": \"low\",
-            \"destructive\": False,
-        })
-        if result[\"approved\"]:
-            # execute the action externally
-            client.record(action, {\"success\": True, \"evidence\": [...], \"data\": {...}})
+    Most users should use the top-level :func:`govern` instead. This class
+    is the single REST call that asks the daemon whether an action is
+    allowed, and records what happened afterwards.
     """
 
     def __init__(self, url: str = "http://127.0.0.1:8443", token: str | None = None):
@@ -212,27 +198,55 @@ class GovernClient:
             raise IceboxError(f"HTTP {e.code}: {msg}") from e
 
     def govern(self, action: dict) -> dict:
-        """Run an action through the full GEE lifecycle.
+        """Run an action through ICEBOX's full governance check.
 
         Returns a GovernResult with approval decision, reason, and chain tip.
         """
         return self._post("/api/v1/govern", action)
 
-    def record(self, action: dict, outcome: dict, decision: str = "allow") -> dict:
+    def record(self, action: dict | str, outcome: Any, decision: str = "allow") -> dict:
         """Record the outcome of a previously governed action.
 
         Appends evidence and an audit-chain entry, returns chain tip.
 
         Args:
             action: The original action dict (same as passed to govern()).
-            outcome: Outcome dict with success, evidence, data.
+            outcome: Outcome dict. Accepts either a full ``ActionOutcome``
+                (keys: success, evidence, data) or a free-form value; a
+                free-form value is wrapped as ``{"success": True, "evidence": [],
+                "data": <outcome>}``.
             decision: The decision from govern() — "allow", "deny", or
-                      "require_approval". Defaults to "allow" only for
-                      backward compatibility; always pass the real value.
+                      "require_approval".
         """
+        if isinstance(action, str):
+            action = {"action": action}
+            
+        if isinstance(outcome, dict) and all(k in outcome for k in ("success", "evidence", "data")):
+            outcome_struct = outcome
+        else:
+            if isinstance(outcome, dict):
+                success = bool(outcome.get("success", True))
+                evidence = outcome.get("evidence", []) or []
+            else:
+                success = True
+                evidence = []
+            
+            outcome_struct = {
+                "success": success,
+                "evidence": evidence,
+                "data": outcome,
+            }
+
+        govern_action = {
+            "action": action.get("action") or "",
+            "target": action.get("target") or "",
+            "capability": action.get("capability") or "network_scan",
+            "impact": action.get("impact") or "low",
+            "destructive": bool(action.get("destructive", False)),
+        }
         return self._post(
             "/api/v1/govern/record",
-            {"action": action, "outcome": outcome, "decision": decision},
+            {"action": govern_action, "outcome": outcome_struct, "decision": decision},
         )
 
 
@@ -253,7 +267,7 @@ class GovernedSession:
         self._client = client
 
     def preflight(self, action: dict) -> dict:
-        """Run the action through the full GEE lifecycle.
+        """Run the action through ICEBOX's full governance check.
 
         Returns a GovernResult: ``{"approved": bool, "decision": str,
         "reason": Optional[str], "decision_id": int, "chain_tip": str}``.
@@ -397,7 +411,7 @@ class Governance:
 
     def governed(self, capability: str | None = None, impact: str = "low",
                  destructive: bool = False):
-        """Decorator that wraps a function in the GEE lifecycle.
+        """Decorator that wraps a function in ICEBOX's governance check.
 
         Every call to the decorated function is preflight-checked, audited,
         and recorded in the tamper-evident hash chain.
@@ -433,3 +447,157 @@ class Governance:
                 raise ActionBlocked(outcome.get("reason", "blocked by policy"))
             return wrapper
         return decorator
+
+
+class GovernResult:
+    """The answer to one question: can my agent do this?
+
+    Truthy when allowed, so ``if govern(...):`` reads naturally.
+    """
+
+    __slots__ = ("allowed", "decision", "reason", "decision_id", "action")
+
+    def __init__(self, allowed, decision, reason, decision_id, action=""):
+        self.allowed = allowed
+        self.decision = decision
+        self.reason = reason
+        self.decision_id = decision_id
+        self.action = action
+
+    def __repr__(self):
+        return f"GovernResult(allowed={self.allowed}, decision={self.decision!r})"
+
+    def __bool__(self):
+        return self.allowed
+
+
+# Keyword -> capability. Kept private and invisible: the user never names a
+# capability; ICEBOX decides. Add verbs here as needed; nothing else depends
+# on this being exhaustive.
+_CAPABILITY_KEYWORDS = [
+    ("privilege_escalation", [
+        "delete", "terminate", "destroy", "drop", "remove", "disable",
+        "shutdown", "kill", "wipe", "reset", "format", "revoke",
+    ]),
+    ("data_collection", [
+        "exfil", "steal", "leak", "export", "dump", "copy out", "offload",
+        "scrape", "exfiltrate",
+    ]),
+    ("credential_access", [
+        "crack", "brute", "phish", "password", "credential", "token",
+        "impersonate", "spoof",
+    ]),
+    ("persistence", [
+        "persist", "implant", "backdoor", "schedule", "cron", "daemon",
+        "service install", "autorun",
+    ]),
+    ("lateral_movement", [
+        "pivot", "lateral", "move", "spread", "propagate", "ssh",
+    ]),
+    ("filesystem_modification", [
+        "write", "modify", "overwrite", "upload", "inject", "patch",
+        "chmod", "chown",
+    ]),
+    ("network_scan", [
+        "scan", "probe", "ping", "enumerate", "discover", "recon", "map",
+        "fingerprint",
+    ]),
+    ("cloud_enumeration", [
+        "list", "describe", "get", "read", "show", "bulk", "snapshot",
+    ]),
+]
+
+
+def _infer_capability(action: str) -> str:
+    """Guess the capability from the action words. Never shown to the user."""
+    text = action.lower()
+    for cap, words in _CAPABILITY_KEYWORDS:
+        if any(w in text for w in words):
+            return cap
+    return "network_scan"
+
+
+def govern(
+    action: str,
+    target: str | None = None,
+    capability: str | None = None,
+    impact: str = "low",
+    destructive: bool = False,
+    verbose: bool = True,
+    url: str = "http://127.0.0.1:8443",
+    token: str | None = None,
+) -> GovernResult:
+    """Ask ICEBOX whether an action is allowed.
+
+    This is the whole SDK. Describe the action in plain words; ICEBOX decides
+    the rest. Use it like a boolean:
+
+        from icebox import govern
+
+        if govern("Delete EC2 Instance", target="Production AWS"):
+            delete_ec2()
+
+    Args:
+        action: What the agent wants to do, in plain words.
+        target: What it acts on (a host, account, or scope name).
+        capability: Usually omitted — ICEBOX infers it from ``action``.
+        impact: "low" | "medium" | "high" | "critical".
+        destructive: True if the action cannot be undone.
+        verbose: Print a short notice when the action is held or blocked.
+    """
+    cap = capability or _infer_capability(action)
+    client = GovernClient(url, token)
+    raw = client.govern(
+        {
+            "action": action,
+            "target": target or "",
+            "capability": cap,
+            "impact": impact,
+            "destructive": destructive,
+        }
+    )
+    decision = raw.get("decision", "deny")
+    allowed = decision == "allow"
+    result = GovernResult(
+        allowed=allowed,
+        decision=decision,
+        reason=raw.get("reason"),
+        decision_id=raw.get("decision_id", 0),
+        action=action,
+    )
+    if verbose and not allowed:
+        _print_protection(result)
+    return result
+
+
+def _print_protection(result: GovernResult) -> None:
+    """One calm message when ICEBOX stops a dangerous action. Never on allow."""
+    if result.decision == "require_approval":
+        decision = "Approval Required"
+    else:
+        decision = "Blocked"
+    env = _profile_label() or "your environment"
+    print()
+    print("ICEBOX protected " + env + ".")
+    print()
+    print("Action:")
+    print(f"  {result.action}")
+    print()
+    print("Decision:")
+    print(f"  {decision}")
+    print()
+    print("Your AI agent attempted a dangerous action and was stopped.")
+
+
+def _profile_label() -> str | None:
+    """Read the environment label from the saved init profile, if present."""
+    import json
+    import os
+
+    path = os.path.expanduser("~/.icebox/profile.json")
+    try:
+        with open(path) as fh:
+            return json.load(fh).get("name")
+    except OSError:
+        return None
+

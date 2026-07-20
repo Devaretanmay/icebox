@@ -50,12 +50,8 @@ impl AuditEntry {
     }
 }
 
-/// Append-only, hash-chained audit ledger; tampering is detected at verify().
-///
-/// When constructed with [`HashChain::with_path`], every `append` is durably
-/// written as one JSON line to disk (fsync'd) so the ledger survives restarts.
-/// On load the file is replayed line-by-line; a truncated final line (left by a
-/// crash mid-write) is tolerated and discarded, then the chain is verified.
+/// Append-only, hash-chained audit ledger. Tampering is detected at verify().
+/// Durably written line-by-line to survive restarts. Truncated tails are discarded.
 #[derive(Debug, Default)]
 pub struct HashChain {
     entries: Vec<AuditEntry>,

@@ -381,6 +381,10 @@ impl PolicyContext {
 pub struct PolicyRequest {
     pub target: String,
     pub capabilities: Vec<Capability>,
+    /// Original capability string as supplied by the caller (may differ from
+    /// the canonical `Capability` after alias normalization, e.g. "exfiltration"
+    /// -> DataCollection). Surfaced in deny reasons for clarity.
+    pub requested_capability: Option<String>,
     pub impact: RiskLevel,
     pub destructive: bool,
     pub charter_accepted: bool,
@@ -483,6 +487,7 @@ impl Preflight {
         PolicyRequest {
             target: self.target.clone(),
             capabilities: self.capabilities.clone(),
+            requested_capability: None,
             impact: self.risk,
             destructive: self.destructive,
             charter_accepted: self.charter_accepted,
@@ -650,7 +655,13 @@ impl PolicyEngine for ConfigPolicy {
             return PolicyDecision::Deny(format!("SAFE MODE (policy failed to load): {reason}"));
         }
         if let Some(c) = self.rules.denied(&req.capabilities) {
-            return PolicyDecision::Deny(format!("capability {} denied by policy", c.as_str()));
+            let label = req
+                .requested_capability
+                .as_ref()
+                .filter(|r| r != &c.as_str())
+                .map(|r| format!("{} (normalized to {})", r, c.as_str()))
+                .unwrap_or_else(|| c.as_str().to_string());
+            return PolicyDecision::Deny(format!("capability {} denied by policy", label));
         }
 
         let pre_approved = self.rules.allows(&req.capabilities);
@@ -1086,6 +1097,7 @@ mod tests {
         let req = PolicyRequest {
             target: "10.0.0.5".into(),
             capabilities: vec![Capability::CredentialAccess],
+            requested_capability: None,
             impact: RiskLevel::Critical,
             destructive: true,
             charter_accepted: true,
@@ -1122,6 +1134,7 @@ mod tests {
         let req = PolicyRequest {
             target: "10.0.0.5".into(),
             capabilities: vec![Capability::NetworkScan],
+            requested_capability: None,
             impact: RiskLevel::Low,
             destructive: false,
             charter_accepted: true,
@@ -1159,6 +1172,7 @@ mod tests {
         let req = PolicyRequest {
             target: "10.0.0.5".into(),
             capabilities: vec![Capability::CredentialAccess],
+            requested_capability: None,
             impact: RiskLevel::Critical,
             destructive: true,
             charter_accepted: true,

@@ -1,10 +1,25 @@
-"""Python SDK for the ICEBOX Governance Kernel.
+"""Python SDK for ICEBOX — protect your autonomous security agent.
 
-``pip install icebox-sdk`` gives you :class:`Workspace` for high-level
-orchestration, and :class:`IceboxClient` for talking to the REST API.
+The only thing most people need:
+
+    from icebox import govern
+
+    if govern(action="...", capability="...", target="...").allowed:
+        do_it()
+
+ICEBOX sits between your agent and dangerous actions and answers one
+question: is this allowed?
 """
 
-from ._sdk import GovernClient, Governance, IceboxClient, IceboxError, GovernedSession, govern
+from ._sdk import (
+    GovernClient,
+    Governance,
+    IceboxClient,
+    IceboxError,
+    GovernedSession,
+    GovernResult,
+    govern,
+)
 
 import contextlib
 
@@ -24,8 +39,12 @@ class Workspace:
         self.client.add_scope(self.target)
         self.client.set_mode(self.mode)
     
-    def execute(self, module: str, approved: bool = True, options: dict | None = None) -> dict:
-        """Executes a module against the workspace target."""
+    def execute(self, module: str, approved: bool = False, options: dict | None = None) -> dict:
+        """Executes a module against the workspace target.
+
+        Defaults to ``approved=False`` so dangerous actions are held for
+        governance review rather than silently auto-approved.
+        """
         return self.client.run_module(module, self.target, approved=approved, options=options)
 
     def audit(self, n: int = 20) -> list[dict]:

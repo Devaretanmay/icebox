@@ -45,7 +45,8 @@ pub enum ClientError {
     Parse(String),
 }
 
-/// ICEBOX Governance SDK client. Wraps any action in a GEE with one call.
+/// ICEBOX Governance SDK client. Wraps any action in a single governance
+/// check.
 pub struct GovernClient {
     client: reqwest::Client,
     base_url: String,

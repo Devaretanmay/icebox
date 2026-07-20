@@ -149,10 +149,8 @@ impl Default for WorkspaceSnapshot {
     }
 }
 
-/// The auto-persisted governance state: charter, scope, policy, and policy
-/// packs. Written atomically on every change so a restart recovers the same
-/// guardrails without an explicit `save`. Audit is persisted separately
-/// (durable ledger); jobs/sessions/memories are not part of durable state.
+/// Auto-persisted governance state. Written atomically on every change.
+/// Audit is persisted separately. Jobs/sessions are not durable.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GovernanceState {
     pub charter: Charter,

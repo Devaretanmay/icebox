@@ -10,12 +10,12 @@ python-source = "python"
 
 [project]
 name = "icebox-sdk"
-version = "0.2.7"
-description = "Python SDK for ICEBOX — runtime governance for autonomous offensive security."
+version = "1.0.0b0"
+description = "The safety wrapper between autonomous security agents and dangerous actions. Govern any action with one call: govern()."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-keywords = ["security", "governance", "offensive-security", "sdk", "ai", "langchain"]
+keywords = ["security", "governance", "offensive-security", "agent", "sdk"]
 authors = [{ name = "Tanmay Devare", email = "contact@tanmaydevare.com" }]
 classifiers = [
     "License :: OSI Approved :: MIT License",
@@ -23,9 +23,6 @@ classifiers = [
     "Topic :: Security",
 ]
 dependencies = []
-
-[project.optional-dependencies]
-langchain = ["langchain>=0.1", "pydantic>=2"]
 
 [project.scripts]
 icebox = "icebox.cli:main"

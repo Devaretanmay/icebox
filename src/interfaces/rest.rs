@@ -12,8 +12,6 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
-use crate::ai::agent::{Agent, LlmPlanner};
-use crate::ai::Orchestrator;
 use crate::core::framework::SharedFramework;
 use crate::core::governance::{
     audit_to_csv, role_allows, ApprovalRequest, ApprovalStatus, PolicyPack, Role,
@@ -112,31 +110,6 @@ struct SessionItem {
     target: String,
     module: String,
     elapsed_secs: u64,
-}
-
-#[derive(Deserialize)]
-struct AgentRunPayload {
-    target: String,
-    model: Option<String>,
-    #[serde(default)]
-    approve: bool,
-}
-
-#[derive(Deserialize)]
-struct OrchestratePayload {
-    targets: Vec<String>,
-    model: Option<String>,
-    #[serde(default)]
-    approve: bool,
-}
-
-#[derive(Serialize)]
-struct AgentRunResponse {
-    summary: String,
-    actions_taken: Vec<String>,
-    sessions_opened: Vec<u64>,
-    job_ids: Vec<u64>,
-    report: String,
 }
 
 #[derive(Serialize)]
@@ -257,8 +230,6 @@ pub async fn serve(fw: SharedFramework, addr: SocketAddr, auth: AuthState) -> an
         .route("/api/v1/sessions", get(list_sessions))
         .route("/api/v1/sessions/{id}/close", post(close_session))
         .route("/api/v1/jobs", get(list_jobs))
-        .route("/api/v1/agent/run", post(run_agent))
-        .route("/api/v1/orchestrate", post(run_orchestrate))
         .route("/api/v1/charter", get(get_charter).post(accept_charter))
         .route("/api/v1/scope", get(get_scope).post(add_scope))
         .route("/api/v1/policy", get(evaluate_policy))
@@ -582,74 +553,6 @@ async fn run_module(
             })
         }
     }
-}
-
-async fn run_agent(
-    State(fw): State<SharedFramework>,
-    Json(payload): Json<AgentRunPayload>,
-) -> Json<AgentRunResponse> {
-    let model = payload.model.unwrap_or_else(|| "llama3.2".into());
-    if !role_allows(fw.lock().await.operator_role, Role::Operator) {
-        return Json(AgentRunResponse {
-            summary: "forbidden: operator role required".into(),
-            actions_taken: vec![],
-            sessions_opened: vec![],
-            job_ids: vec![],
-            report: String::new(),
-        });
-    }
-    let planner = Box::new(LlmPlanner::new(&model));
-    let mut agent = Agent::new(planner, fw, payload.target.clone(), RiskLevel::High);
-    agent.set_approved(true);
-    if payload.approve {
-        agent.set_plan_approver(Box::new(crate::ai::agent::AlwaysApprove));
-    } else {
-        agent.set_plan_approver(Box::new(crate::ai::agent::DenyPlan));
-    }
-    match agent.run().await {
-        Ok(cr) => Json(AgentRunResponse {
-            summary: cr.summary,
-            actions_taken: cr.actions_taken,
-            sessions_opened: cr.sessions_opened.iter().map(|s| s.as_u64()).collect(),
-            job_ids: cr.job_ids.iter().map(|j| j.as_u64()).collect(),
-            report: cr.report,
-        }),
-        Err(e) => Json(AgentRunResponse {
-            summary: format!("error: {e}"),
-            actions_taken: vec![],
-            sessions_opened: vec![],
-            job_ids: vec![],
-            report: String::new(),
-        }),
-    }
-}
-
-async fn run_orchestrate(
-    State(fw): State<SharedFramework>,
-    Json(payload): Json<OrchestratePayload>,
-) -> Json<crate::ai::CampaignReport> {
-    let model = payload.model.unwrap_or_else(|| "llama3.2".into());
-    if !role_allows(fw.lock().await.operator_role, Role::Operator) {
-        return Json(crate::ai::CampaignReport {
-            targets: payload.targets.clone(),
-            summaries: vec!["forbidden: operator role required".into()],
-            ok: 0,
-            failed: 0,
-            total_jobs: 0,
-            total_sessions: 0,
-            total_decisions: 0,
-            total_evidence: 0,
-            total_traces: 0,
-        });
-    }
-    let mut orch = Orchestrator::new(fw, RiskLevel::High);
-    orch.set_approved(payload.approve);
-    Json(
-        orch.run(&payload.targets, move || {
-            Box::new(LlmPlanner::new(model.clone()))
-        })
-        .await,
-    )
 }
 
 async fn list_sessions(State(fw): State<SharedFramework>) -> Json<Vec<SessionItem>> {

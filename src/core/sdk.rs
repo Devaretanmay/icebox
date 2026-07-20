@@ -194,6 +194,7 @@ impl GovernanceRuntime {
         let req = PolicyRequest {
             target: task.target.clone(),
             capabilities: task.capabilities.clone(),
+            requested_capability: None,
             impact: task.impact,
             destructive: task.destructive,
             charter_accepted: st.config.charter.accepted,
@@ -305,6 +306,7 @@ impl GovernanceRuntime {
         let req = PolicyRequest {
             target: task.target.clone(),
             capabilities: task.capabilities.clone(),
+            requested_capability: None,
             impact: task.impact,
             destructive: task.destructive,
             charter_accepted: st.config.charter.accepted,

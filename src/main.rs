@@ -279,6 +279,11 @@ async fn main() -> anyhow::Result<()> {
         rt.block_on(async { icebox::interfaces::rest::serve(fw_api, addr, auth).await })
     });
     if no_auth {
+        eprintln!("\x1b[31m!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\x1b[0m");
+        eprintln!("\x1b[31m!! WARNING: REST API AUTH DISABLED (--no-auth).            !!\x1b[0m");
+        eprintln!("\x1b[31m!! Anyone who can reach {addr} can mutate policy, scope,    !!\x1b[0m");
+        eprintln!("\x1b[31m!! charter, and run modules. Local development only.       !!\x1b[0m");
+        eprintln!("\x1b[31m!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\x1b[0m");
         eprintln!("REST API http://{addr}/api/v1  (AUTH DISABLED --no-auth)");
     } else {
         eprintln!("REST API http://{addr}/api/v1  (Bearer token in ~/.icebox/auth.token)");
@@ -310,24 +315,18 @@ async fn main() -> anyhow::Result<()> {
         let fw_arc = s.fw.clone();
         if matches!(
             c.as_str(),
-            "agent"
-                | "save"
+            "save"
                 | "load"
-                | "validate"
                 | "role"
                 | "pack"
                 | "approve"
-                | "campaign"
                 | "proxy"
                 | "tier"
         ) {
             drop(s);
             match c.as_str() {
-                "agent" => cmd_agent(a, fw_arc.clone()).await,
-                "campaign" => cmd_campaign(a, fw_arc.clone()).await,
                 "save" => cmd_save(a, fw_arc.clone()).await,
                 "load" => cmd_load(a, fw_arc.clone()).await,
-                "validate" => cmd_validate(a, fw_arc.clone()).await,
                 "role" => cmd_role(a, fw_arc.clone()).await,
                 "pack" => cmd_pack(a, fw_arc.clone()).await,
                 "approve" => cmd_approve(a, fw_arc.clone()).await,
@@ -339,7 +338,7 @@ async fn main() -> anyhow::Result<()> {
             let mut fw = fw_arc.lock().await;
             let fw: &mut Framework = &mut fw;
             match c.as_str() {
-                "help" | "?" => println!("Commands: help list use info set show charter scope run sessions jobs agent campaign validate save load policy audit evidence traces memory role pack approve proxy tier\nREST API on http://127.0.0.1:8443/api/v1"),
+                "help" | "?" => println!("Commands: help list use info set show charter scope run sessions jobs save load policy audit evidence traces memory role pack approve proxy tier\nREST API on http://127.0.0.1:8443/api/v1"),
                 "exit" | "quit" => std::process::exit(0),
                 "list" => cmd_list().await,
                 "use" => cmd_use(a, &mut s, fw).await,
@@ -566,211 +565,6 @@ async fn cmd_load(a: &[&str], fw: SharedFramework) {
             println!("loaded from {path}");
         }
         Err(e) => println!("load error: {e}"),
-    }
-}
-
-async fn cmd_agent(a: &[&str], fw: SharedFramework) {
-    if !role_allows(fw.lock().await.operator_role, Role::Operator) {
-        println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
-        return;
-    }
-    if a.first().copied() != Some("run") {
-        println!("usage: agent run [--model <name>] <target>");
-        return;
-    }
-    let (model, target) = if a.get(1).copied() == Some("--model") {
-        (
-            a.get(2).unwrap_or(&"llama3.2").to_string(),
-            a[3..].join(" "),
-        )
-    } else {
-        ("llama3.2".to_string(), a[1..].join(" "))
-    };
-    if target.is_empty() {
-        println!("usage: agent run [--model <name>] <target>");
-        return;
-    }
-    println!("agent: starting campaign against {target} (model: {model})");
-    let planner = Box::new(icebox::ai::agent::LlmPlanner::new(model));
-    let mut agent = icebox::ai::agent::Agent::new(planner, fw, target, RiskLevel::High);
-    agent.set_plan_approver(Box::new(icebox::ai::agent::InteractiveApprover));
-    match agent.run().await {
-        Ok(cr) => {
-            println!("\n=== Campaign Complete ===");
-            println!("Summary: {}", cr.summary);
-            println!("Actions taken: {}", cr.actions_taken.join(", "));
-            println!("Jobs: {:?}", cr.job_ids);
-            println!("Sessions: {:?}", cr.sessions_opened);
-            println!("\nReport:\n{}", cr.report);
-        }
-        Err(e) => println!("agent error: {e}"),
-    }
-}
-
-async fn cmd_campaign(a: &[&str], fw: SharedFramework) {
-    if !role_allows(fw.lock().await.operator_role, Role::Operator) {
-        println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
-        return;
-    }
-    let approved = a.last().copied() == Some("approve");
-    let targets: Vec<String> = a
-        .iter()
-        .take(if approved { a.len() - 1 } else { a.len() })
-        .filter(|t| !t.is_empty())
-        .map(|t| t.to_string())
-        .collect();
-    if targets.is_empty() {
-        println!("usage: campaign <target1> [target2 ...] [approve]");
-        return;
-    }
-    println!(
-        "campaign: {} target(s) (approved: {approved})",
-        targets.len()
-    );
-    let orch = icebox::ai::Orchestrator::new(fw, RiskLevel::High);
-    let report = orch
-        .run(&targets, || {
-            Box::new(icebox::ai::agent::LlmPlanner::new("llama3.2"))
-        })
-        .await;
-    println!("ok: {}  failed: {}", report.ok, report.failed);
-    for (t, s) in report.targets.iter().zip(report.summaries.iter()) {
-        println!("  - {t}: {s}");
-    }
-    println!(
-        "aggregate: jobs={} sessions={} decisions={} evidence={} traces={}",
-        report.total_jobs,
-        report.total_sessions,
-        report.total_decisions,
-        report.total_evidence,
-        report.total_traces
-    );
-}
-
-async fn cmd_validate(a: &[&str], fw: SharedFramework) {
-    if !role_allows(fw.lock().await.operator_role, Role::Operator) {
-        println!("{COLOR_ORANGE}forbidden: operator role required{COLOR_RESET}");
-        return;
-    }
-    match a.first().copied() {
-        Some("diff") => {
-            let (pa, pb) = (a.get(1).copied(), a.get(2).copied());
-            let (Some(pa), Some(pb)) = (pa, pb) else {
-                println!("usage: validate diff <a.json> <b.json>");
-                return;
-            };
-            let ra: icebox::ai::ValidationReport = match load_report(pa) {
-                Some(r) => r,
-                None => return,
-            };
-            let rb: icebox::ai::ValidationReport = match load_report(pb) {
-                Some(r) => r,
-                None => return,
-            };
-            let d = icebox::ai::diff(&ra, &rb);
-            println!(
-                "policy: {} -> {} | jobs {:+}", d.policy_version_a, d.policy_version_b, d.jobs_delta
-            );
-            println!(
-                "deltas: evidence {:+} decisions {:+} traces {:+} (targets: {})",
-                d.evidence_delta, d.decisions_delta, d.traces_delta, d.target_count
-            );
-        }
-        Some("run") | None => {
-            let mut targets: Vec<String> = Vec::new();
-            let mut workspace: Option<String> = None;
-            let mut out: Option<String> = None;
-            let mut model = "llama3.2".to_string();
-            let rest = if a.first().copied() == Some("run") { &a[1..] } else { a };
-            let mut it = rest.iter();
-            while let Some(&arg) = it.next() {
-                match arg {
-                    "--targets" => {
-                        targets = it
-                            .next()
-                            .unwrap_or(&"")
-                            .split(',')
-                            .map(|s| s.trim().to_string())
-                            .filter(|s| !s.is_empty())
-                            .collect();
-                    }
-                    "--workspace" => workspace = Some(it.next().unwrap_or(&"").to_string()),
-                    "--out" => out = Some(it.next().unwrap_or(&"").to_string()),
-                    "--model" => model = it.next().unwrap_or(&"llama3.2").to_string(),
-                    _ => {}
-                }
-            }
-            if let Some(path) = &workspace {
-                match icebox::core::workspace::WorkspaceSnapshot::load_from_file(path) {
-                    Ok(snap) => {
-                        let mut g = fw.lock().await;
-                        let audit_path = std::env::var_os("HOME")
-                            .or_else(|| std::env::var_os("USERPROFILE"))
-                            .map(|h| std::path::Path::new(&h).join(".icebox/audit.jsonl"));
-                        snap.apply_to_framework(&mut g, audit_path.as_deref());
-                        println!("validate: loaded workspace {path}");
-                    }
-                    Err(e) => {
-                        println!("validate: workspace load error: {e}");
-                        return;
-                    }
-                }
-            }
-            if targets.is_empty() {
-                let g = fw.lock().await;
-                targets = g.executor.scope.allow.clone();
-            }
-            if targets.is_empty() {
-                println!("validate: no targets - pass --targets t1,t2 or set scope");
-                return;
-            }
-            println!("validate: {} target(s) (model: {model})", targets.len());
-            let model_for_closure = model.clone();
-            let report = icebox::ai::run_validation(
-                fw.clone(),
-                &targets,
-                RiskLevel::High,
-                move || Box::new(icebox::ai::agent::LlmPlanner::new(model_for_closure.clone())),
-            )
-            .await;
-            println!(
-                "validate: ok={} failed={} (policy v{}, ran_at {})",
-                report.campaign.ok, report.campaign.failed, report.policy_version, report.ran_at
-            );
-            println!(
-                "totals: jobs={} sessions={} decisions={} evidence={} traces={}",
-                report.campaign.total_jobs,
-                report.campaign.total_sessions,
-                report.campaign.total_decisions,
-                report.campaign.total_evidence,
-                report.campaign.total_traces
-            );
-            if let Some(path) = &out {
-                match std::fs::write(path, serde_json::to_string_pretty(&report).unwrap_or_default()) {
-                    Ok(_) => println!("validate: report saved to {path}"),
-                    Err(e) => println!("validate: save error: {e}"),
-                }
-            }
-        }
-        Some(_) => println!(
-            "usage: validate run [--targets t1,t2] [--workspace w.json] [--out report.json] [--model m] | validate diff <a.json> <b.json>"
-        ),
-    }
-}
-
-fn load_report(path: &str) -> Option<icebox::ai::ValidationReport> {
-    match std::fs::read_to_string(path) {
-        Ok(s) => match serde_json::from_str::<icebox::ai::ValidationReport>(&s) {
-            Ok(r) => Some(r),
-            Err(e) => {
-                println!("validate: parse error {path}: {e}");
-                None
-            }
-        },
-        Err(e) => {
-            println!("validate: read error {path}: {e}");
-            None
-        }
     }
 }
 

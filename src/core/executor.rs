@@ -182,6 +182,7 @@ impl ModuleExecutor {
         let req = PolicyRequest {
             target: action.target.clone(),
             capabilities: vec![capability],
+            requested_capability: Some(action.capability.clone()),
             impact: action.impact,
             destructive: action.destructive,
             charter_accepted: self.charter.accepted,

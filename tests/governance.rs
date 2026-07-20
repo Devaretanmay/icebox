@@ -1,5 +1,5 @@
-//! Phase 6 eval: enterprise governance primitives (RBAC, policy packs,
-//! approval queue, audit export). Run with `cargo test --test governance`.
+//! Governance primitive tests: RBAC, approval queue, policy rules, audit
+//! export. Run with `cargo test --test governance`.
 
 use icebox::core::governance::{audit_to_csv, role_allows, ApprovalQueue, PolicyPack, Role};
 use icebox::core::safety::{
@@ -114,6 +114,7 @@ fn cvss_deny_above_threshold() {
     let req = PolicyRequest {
         target: "10.0.0.5".into(),
         capabilities: vec![Capability::NetworkScan],
+            requested_capability: None,
         impact: RiskLevel::Low,
         destructive: false,
         charter_accepted: true,
@@ -163,6 +164,7 @@ fn cvss_require_approval_above_threshold() {
     let req = PolicyRequest {
         target: "10.0.0.5".into(),
         capabilities: vec![Capability::NetworkScan],
+            requested_capability: None,
         impact: RiskLevel::Low,
         destructive: false,
         charter_accepted: true,
@@ -209,6 +211,7 @@ fn cvss_epss_triggers_approval() {
     let req = PolicyRequest {
         target: "10.0.0.5".into(),
         capabilities: vec![Capability::NetworkScan],
+            requested_capability: None,
         impact: RiskLevel::Low,
         destructive: false,
         charter_accepted: true,
@@ -244,6 +247,7 @@ fn cvss_kev_triggers_approval() {
     let req = PolicyRequest {
         target: "10.0.0.5".into(),
         capabilities: vec![Capability::NetworkScan],
+            requested_capability: None,
         impact: RiskLevel::Low,
         destructive: false,
         charter_accepted: true,
