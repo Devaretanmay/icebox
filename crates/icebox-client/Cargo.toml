@@ -3,6 +3,8 @@ name = "icebox-client"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "HTTP client for the ICEBOX governance daemon."
+repository.workspace = true
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

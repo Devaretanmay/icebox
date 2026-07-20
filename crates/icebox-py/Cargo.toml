@@ -3,6 +3,7 @@ name = "icebox-py"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Python bindings (pyo3) for the ICEBOX governance runtime."
 repository.workspace = true
 
 [lib]
