@@ -11,7 +11,7 @@ python-source = "python"
 [project]
 name = "icebox-sdk"
 version = "2.0.0b0"
-description = "The safety wrapper between autonomous security agents and dangerous actions. Govern any action with one call: govern()."
+description = "A staging environment for autonomous workflows. Give your AI agent a safe place to fail; reality only sees the first success."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

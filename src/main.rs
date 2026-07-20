@@ -240,7 +240,9 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
     if args.iter().any(|a| a == "--help" || a == "-h") {
-        println!("ICEBOX - governance kernel for security tooling");
+        println!("ICEBOX - v2 staging environment for autonomous workflows");
+        println!("  (this daemon is the preserved v1 governance kernel; mount it via the");
+        println!("   icebox-governance plugin when you need allow/deny gating.)");
         println!();
         println!("USAGE:");
         println!("  icebox            Start interactive REPL + REST API (http://127.0.0.1:8443)");
