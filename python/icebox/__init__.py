@@ -1,17 +1,26 @@
-"""Python SDK for ICEBOX — protect your autonomous security agent.
+"""ICEBOX — a staging environment for autonomous workflows.
 
 The only thing most people need:
 
-    from icebox import govern
+    from icebox import icebox
 
-    if govern(action="...", capability="...", target="...").allowed:
-        do_it()
+    with icebox() as session:
+        session.run(my_agent.run_task)
 
-ICEBOX sits between your agent and dangerous actions and answers one
-question: is this allowed?
+ICEBOX gives an AI agent a temporary, isolated place to run its whole
+workflow and fail as many times as it wants. Reality only ever sees the
+first success. ICEBOX never mutates reality itself.
+
+The legacy governance SDK (``govern``, ``Workspace``) is still importable
+from :mod:`icebox.governance` for v1 users and is being relocated to an
+optional plugin.
 """
 
-from ._sdk import (
+from .session import Session, SessionPlugin, SessionAudit, icebox, register_profile
+from . import governance  # noqa: F401  (v1 governance, optional plugin)
+
+# v1 governance surface (deprecated, relocated to icebox.governance)
+from ._sdk import (  # noqa: F401
     GovernClient,
     Governance,
     IceboxClient,
@@ -21,53 +30,10 @@ from ._sdk import (
     govern,
 )
 
-import contextlib
-
-class Workspace:
-    """High-level abstraction for ICEBOX orchestration.
-    
-    Wraps the ICEBOX engine so AI agents don't have to deal with raw
-    C-pointers or HTTP endpoints directly.
-    """
-
-    def __init__(self, target: str, mode: str = "freezer", url: str = "http://127.0.0.1:8443"):
-        """Initialize the workspace with a target path, restriction mode, and ICEBOX daemon URL."""
-        self.target = target
-        self.mode = mode
-        self.client = IceboxClient(url)
-        self.client.accept_charter(self.target)
-        self.client.add_scope(self.target)
-        self.client.set_mode(self.mode)
-    
-    def execute(self, module: str, approved: bool = False, options: dict | None = None) -> dict:
-        """Executes a module against the workspace target.
-
-        Defaults to ``approved=False`` so dangerous actions are held for
-        governance review rather than silently auto-approved.
-        """
-        return self.client.run_module(module, self.target, approved=approved, options=options)
-
-    def audit(self, n: int = 20) -> list[dict]:
-        """Retrieves the JSON audit trail for the workspace."""
-        return self.client.audit(n)
-
-    @contextlib.contextmanager
-    def tunnel(self, port: int):
-        """Creates a governed tunnel to the target port.
-        
-        Yields a local port that the agent can connect to. ICEBOX will intercept,
-        govern, and forward the traffic to the real target.
-        """
-        res = self.client.bind_proxy(self.target, port)
-        if "error" in res and res["error"]:
-            raise IceboxError(f"Failed to bind proxy: {res['error']}")
-        local_port = res.get("local_port")
-        if not local_port:
-            raise IceboxError(f"No local port returned: {res}")
-        try:
-            yield local_port
-        finally:
-            self.client.unbind_proxy(local_port)
-
-__all__ = ["Governance", "GovernClient", "IceboxClient", "IceboxError", "Workspace", "govern", "GovernedSession"]
-__version__ = "0.2.7"
+__all__ = [
+    "Session", "SessionPlugin", "SessionAudit", "icebox", "register_profile",
+    "governance",
+    "govern", "Governance", "GovernClient", "IceboxClient", "IceboxError",
+    "GovernedSession", "GovernResult",
+]
+__version__ = "2.0.0b0"

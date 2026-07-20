@@ -2,29 +2,31 @@
 
 ICEBOX reduces to one irreducible primitive:
 
-> **Should this action happen?**
+> **Give an autonomous workflow a temporary, isolated place to run and fail, so
+> reality only ever sees the first success.**
 
-The codebase owns exactly one thing — the decision of whether an autonomous
-action is allowed — and nothing else. It does not execute the action, run the
-agent, or manage the target. The agent executes; ICEBOX decides.
+ICEBOX never executes the agent's results against reality. The agent does.
 
 ```
                     AI AGENT
                        |
-                  govern(action)
+                  icebox()  ->  open a Session
                        |
                        v
-                SHOULD THIS HAPPEN?
+                ENTER (isolated)
                        |
-         -----------------------------------
-         |                |               |
-       ALLOW       REQUIRE APPROVAL       DENY
-         |                |               |
-         v                v               X
-    Agent executes     Human decides
-         |
-         v
-     Real World
+                       v
+                EXECUTE workflow
+                       |
+                       v
+                exit 0 ?  ---- NO ---- refactor -> retry (inside Session)
+                       |
+                      YES
+                       v
+                EXIT  -> artifacts + status returned
+                       |
+                       v
+                Agent applies results to reality
 ```
 
 ## Layers
@@ -32,71 +34,47 @@ agent, or manage the target. The agent executes; ICEBOX decides.
 ```
 THE PRODUCT
 
-- govern()          one call: is this allowed?
-- icebox init       what do you want to protect?
-- icebox doctor     are you protected?
-- examples/         recipes: claude_code, openai_agents, crewai, autogen
+- icebox() / Session   open + run + exit a staging Session
+- icebox init          pick a Session profile (onboarding)
+- icebox doctor        Docker / Session / plugin health
+- examples/            recipes: claude_code, openai_agents, crewai, autogen
 
         ↓
 
-THE GOVERNANCE CORE  (frozen; the "governance kernel")
+THE SESSION (isolated, temporary, always audited)
 
-- executor.rs   enforces the mandatory execution seam (fail-closed)
-- safety.rs     evaluates policy, scope, capabilities, risk
-- sandbox.rs    provides isolation when required
-- audit.rs      makes every decision durable and tamper-evident (SHA-256 chain)
-- sdk.rs        defines governance decision types
-- (src/interfaces/rest.rs) exposes the same governance semantics over REST
+- enter    -> provision an isolated environment (Docker)
+- execute  -> run a Python callable or CLI command group
+- validate -> optional; default = exit 0
+- retry    -> on failure, re-run inside the same Session (infinite)
+- exit     -> tear down container, return artifacts + status
+- audit    -> built in: attempts, failures, duration, artifacts, history
 
         ↓
 
-THE AGENT'S WORLD  (governed, not owned by ICEBOX)
+OPTIONAL PLUGINS (mounted only when needed)
 
-- AWS
-- GitHub
-- Filesystems
-- Infrastructure
-- Pentesting tooling
-- Cloud APIs
+- Governance    (v1 kernel, preserved, off by default)
+- NetworkPolicy (egress isolation, reuses src/core/proxy)
+- ResourceLimits
+
+        ↓
+
+THE AGENT'S WORLD (the agent's responsibility, not ICEBOX's)
+
+- AWS, GitHub, Filesystems, Infrastructure, Pentesting tooling, Cloud APIs
 ```
-
-### Supporting scaffolding (not part of the decision primitive)
-
-The following modules exist in `src/core/` but are machinery that *serves* the
-decision, not separate "engines." They hold the state and types the agent
-interaction model needs; they do not decide anything on their own.
-
-- `module.rs` — capability / intent / module-kind types
-- `governance.rs` — roles, policy-pack, and approval-status types
-- `job.rs` / `session.rs` — job and session state records
-- `workspace.rs` — durable workspace snapshots (state persistence)
-- `framework.rs` — shared framework container wiring the executor together
-- `gee.rs` — the internal staged execution lifecycle the executor enforces
-- `proxy/` — egress isolation (network-namespace / TCP proxy) for contained runs
-
-None of these are "trust", "decision", "approval", or "runtime" engines. They are
-data structures and plumbing around the single question: should this happen?
-
 
 ## What is deliberately absent
 
-These do not exist in the source and are not planned. They are intellectual
-inflation:
+These do not belong in the core product:
 
-- Trust engine
-- Decision engine
-- Approval engine
-- Agent runtime
-- Execution layer
-- Governance runtime
-- AI operating system
-
-ICEBOX is not an "OS kernel" in the operating-system sense: it owns no process
-execution, memory, scheduling, filesystems, or syscalls. "Governance kernel" is
-used only because ICEBOX owns the invariants around governance decisions.
+- Generic process hosting / container platform (we are not Daytona/E2B/Modal).
+- Mandatory governance, policy engines, approval gates (those are a plugin).
+- "AI OS" / agent runtime / execution layer / operating-system framing.
 
 ## The one invariant
 
-Fail closed. Every action an agent wants to take is policy-checked,
-scope-enforced, approval-gated when required, and audited. If the core cannot
-reach a confident allow decision, the answer is deny.
+Failure inside a Session is free. The agent may iterate forever; the container
+is destroyed on exit and reality is never touched unless the agent applies the
+results itself. Audit records what happened so the human can inspect it.

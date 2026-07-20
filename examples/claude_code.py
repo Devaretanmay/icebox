@@ -1,31 +1,28 @@
-"""ICEBOX recipe: protect a Claude Code agent.
+"""ICEBOX recipe: stage a Claude Code agent.
 
 This is a starting point, not a maintained integration. It shows the pattern:
-intercept a tool call, ask ICEBOX, and only run it when allowed.
+give the agent a Session, let it run its whole workflow inside, and only the
+first success ever touches reality.
 
-Wire this into your Claude Code setup however you run it — for example, wrap
-the function your agent calls to execute a shell command or tool.
+    from icebox import icebox
 
-    from icebox import govern
+    def run_claude_code(task):
+        # your agent loop — builds code, runs tests, refactors on failure
+        ...
 
-    def guarded_tool(name, input):
-        if govern(name, target=input.get("target", "unknown")):
-            return real_tool(name, input)
-        return None  # ICEBOX stopped it
+    with icebox(profile="development") as session:
+        session.run(run_claude_code)
+    # session exited: artifacts + status returned. Apply results yourself.
 """
 
-from icebox import govern
+from icebox import icebox
 
 
-def protect(tool_fn):
-    """Wrap a Claude Code tool function so ICEBOX governs every call.
+def stage(task: str, runner, *, profile: str | None = None):
+    """Run ``runner(task)`` inside an ICEBOX Session.
 
-    tool_fn is your real tool executor: tool_fn(name, input) -> result.
+    The agent may fail as many times as it needs; reality only sees the
+    first success. Returns the Session audit (attempts, failures, artifacts).
     """
-    def wrapper(name, input=None):
-        input = input or {}
-        target = input.get("target") or input.get("command") or "unknown"
-        if govern(name, target=target):
-            return tool_fn(name, input)
-        return None
-    return wrapper
+    with icebox(task=task, profile=profile) as session:
+        return session.run(lambda: runner(task))

@@ -1,28 +1,20 @@
-"""ICEBOX recipe: protect an OpenAI Agents SDK agent.
+"""ICEBOX recipe: stage an OpenAI Agents SDK workflow.
 
-Starting point, not a maintained integration. The pattern: before the agent
-runs a tool, ask ICEBOX. Only proceed when allowed.
+Starting point, not a maintained integration. The agent runs its whole
+workflow inside a Session and may iterate freely; reality only sees the first
+success.
 
-    from icebox import govern
-    from openai_agents import Tool
+    from icebox import icebox
 
-    def guarded(run_tool):
-        def wrapper(tool: Tool, args):
-            if govern(tool.name, target=args.get("target", "unknown")):
-                return run_tool(tool, args)
-            return None
-        return wrapper
+    with icebox(profile="aws") as session:
+        session.run(lambda: my_agent.run())   # Python callable
+        # or session.run_cli("python agent.py") # CLI command group
 """
 
-from icebox import govern
+from icebox import icebox
 
 
-def protect(tool_runner):
-    """Wrap the OpenAI Agents tool runner so every tool call is governed."""
-    def wrapper(tool, args=None):
-        args = args or {}
-        target = args.get("target") or "unknown"
-        if govern(tool.name, target=target):
-            return tool_runner(tool, args)
-        return None
-    return wrapper
+def stage(task: str, agent_fn, *, profile: str | None = None):
+    """Run ``agent_fn`` inside an ICEBOX Session and return its audit."""
+    with icebox(task=task, profile=profile) as session:
+        return session.run(agent_fn)

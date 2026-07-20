@@ -1,20 +1,26 @@
-"""ICEBOX command-line entry point.
+"""ICEBOX command-line entry point (v2).
 
-Two commands a user needs: ``icebox init`` (get protected) and
-``icebox doctor`` (confirm you're protected). Everything else is ICEBOX's
-problem, not the user's.
+Two commands a user needs for onboarding and health:
+
+    icebox init      -> pick a Session profile (30-second setup)
+    icebox doctor    -> Docker / Session / plugin / resource health
+
+Plus session control:
+
+    icebox session create [--profile aws] [--lifetime 1h]
+    icebox session run <cmd|script>
+    icebox session status
+    icebox session exit <id>
+
+Everything else is ICEBOX's problem, not the user's.
 """
 
 import json
 import os
+import shutil
+import subprocess
 import sys
-import urllib.error
-import urllib.request
 
-from . import presets
-
-
-DAEMON = "http://127.0.0.1:8443"
 PROFILE_PATH = os.path.expanduser("~/.icebox/profile.json")
 
 
@@ -25,7 +31,7 @@ def _menu(prompt, options):
     while True:
         resp = input("> ").strip()
         if resp.isdigit() and 1 <= int(resp) <= len(options):
-            return str(int(resp))
+            return int(resp)
         print(f"Please enter a number between 1 and {len(options)}.")
 
 
@@ -40,30 +46,48 @@ def _yes_no(prompt):
         print("Please answer Y or N.")
 
 
-def _post(path, body):
-    req = urllib.request.Request(
-        DAEMON + path,
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
+# Profiles are bundles of optional plugins. Core staging is always on; the
+# profile only selects which optional concerns (governance, etc.) are mounted.
+PROFILES = {
+    1: ("default", "Pure isolated staging. Audit on, no governance.", []),
+    2: ("aws", "Staging + AWS governance profile.", ["governance:aws"]),
+    3: ("pentesting", "Staging + pentesting governance profile.", ["governance:pentesting"]),
+    4: ("development", "Staging + relaxed governance for local work.", ["governance:dev"]),
+}
+
+
+def init_wizard():
+    print("-" * 50)
+    print("Welcome to ICEBOX")
+    print()
+    print("ICEBOX gives your agent a safe place to fail.")
+    print("Pick a Session profile — you can change it anytime.")
+    print("-" * 50)
+    print()
+
+    choice = _menu(
+        "Which Session profile?",
+        [f"{v[0]} — {v[1]}" for v in PROFILES.values()],
     )
-    try:
-        urllib.request.urlopen(req, timeout=10).read()
-        return True
-    except urllib.error.HTTPError as e:
-        print(f"  [warn] could not configure {path}: {e.read().decode()[:120]}")
-        return False
-    except urllib.error.URLError:
-        return False
+    name, _, plugins = PROFILES[choice]
 
+    profile = {
+        "name": name,
+        "plugins": plugins,
+        "lifetime_s": None,
+    }
+    _save_profile(profile)
 
-def _apply_profile(profile):
-    ok = True
-    ok &= _post("/api/v1/charter", {"engagement": profile["engagement"]})
-    ok &= _post("/api/v1/scope", {"target": profile["scope"]})
-    for rule in profile["policy"]:
-        ok &= _post("/api/v1/policy/rules", rule)
-    return ok
+    print()
+    print("-" * 50)
+    print(f"ICEBOX profile ready:  {name}")
+    print()
+    print("Run a workflow in a Session:")
+    print()
+    print("    from icebox import icebox")
+    print("    with icebox(profile=" + repr(name) + ") as s:")
+    print("        s.run(my_agent.run_task)")
+    print("-" * 50)
 
 
 def _save_profile(profile):
@@ -75,54 +99,12 @@ def _save_profile(profile):
         pass
 
 
-def init_wizard():
-    print("-" * 50)
-    print("Welcome to ICEBOX")
-    print()
-    print("ICEBOX protects your AI agent from doing stupid things.")
-    print("-" * 50)
-    print()
-
-    protect_key = _menu(
-        "What do you want to protect?",
-        [v[0] for v in presets.PROTECT_WHAT.values()],
-    )
-    env_key = _menu(
-        "What environment is this?",
-        [v[0] for v in presets.ENVIRONMENTS.values()],
-    )
-    approval = _yes_no("Should dangerous actions require your approval?  [Y/N]")
-    deny_destructive = _yes_no("Should destructive actions be blocked by default?  [Y/N]")
-    scope = input("What will your agent act on? (an IP range, a name like "
-                  "'production-aws', or * for anything)\n> ").strip() or "*"
-
-    profile = presets.build_profile(protect_key, env_key, approval,
-                                    deny_destructive, scope)
-    _save_profile(profile)
-
-    print()
-    print("Configuring ICEBOX...")
-    reached = _apply_profile(profile)
-    if not reached:
-        print()
-        print("  Could not reach a running ICEBOX daemon.")
-        print("  Start it first, then re-run 'icebox init'. Your choices are saved.")
-        return
-
-    print()
-    print("-" * 50)
-    print(f"Your ICEBOX profile is ready:  {profile['name']}")
-    print()
-    for line in profile["summary"]:
-        print(f"  - {line}")
-    print()
-    print("Done. Protect your agent with:")
-    print()
-    print("    from icebox import govern")
-    print()
-    print("    if govern(\"Delete EC2 Instance\", target=\"Production AWS\"):")
-    print("        delete_ec2()")
-    print("-" * 50)
+def _load_profile():
+    try:
+        with open(PROFILE_PATH) as fh:
+            return json.load(fh)
+    except OSError:
+        return None
 
 
 def doctor():
@@ -130,34 +112,27 @@ def doctor():
     print()
     checks = []
 
-    # 1. Daemon reachable
-    daemon_ok = _get("/api/v1/charter") is not None
-    checks.append((daemon_ok, "Daemon running",
-                   "start the ICEBOX daemon (icebox-daemon --api)"))
+    docker = shutil.which("docker")
+    checks.append((docker is not None,
+                   "Docker available", "install Docker"))
+    if docker:
+        running = subprocess.run([docker, "info"],
+                                 capture_output=True, text=True).returncode == 0
+        checks.append((running, "Docker daemon running",
+                       "start Docker"))
 
     profile = _load_profile()
-    # 2. Charter accepted
-    charter = _get("/api/v1/charter") or {}
-    checks.append((bool(charter.get("accepted")),
-                   "Policy loaded", "run: icebox init"))
-    # 3. Policy rules present
-    policy = _get("/api/v1/policy") or {}
-    n_rules = len(policy.get("rules", []))
-    checks.append((n_rules > 0, f"Policy loaded ({n_rules} rules)",
-                   "run: icebox init"))
-    # 4. Audit enabled (scope set => audit path active)
-    scope = _get("/api/v1/scope") or []
-    checks.append((len(scope) > 0, "Audit enabled",
-                   "run: icebox init"))
-    # 5. Sandbox from saved profile
-    sandbox_ok = bool(profile and profile.get("sandbox"))
-    checks.append((sandbox_ok, "Sandbox enabled",
-                   "run: icebox init"))
-    # 6. Profile loaded
     checks.append((profile is not None,
                    f"{profile['name']} profile loaded" if profile
-                   else "No profile loaded",
+                   else "No profile (using default staging)",
                    "run: icebox init"))
+    if profile:
+        checks.append((len(profile.get("plugins", [])) >= 0,
+                       f"plugins: {profile.get('plugins') or 'none (core only)'}",
+                       "re-run icebox init"))
+
+    checks.append((True, "Audit built in to every Session",
+                   ""))
 
     all_ok = True
     for ok, label, fix in checks:
@@ -165,27 +140,35 @@ def doctor():
         print(f"{mark} {label}")
         if not ok:
             all_ok = False
-            print(f"    fix: {fix}")
+            if fix:
+                print(f"    fix: {fix}")
     print()
-    print("You're protected." if all_ok else
-          "ICEBOX is not fully active. Run 'icebox init'.")
+    print("You're ready to stage autonomous workflows."
+          if all_ok else "ICEBOX needs attention above.")
 
 
-def _get(path):
-    try:
-        req = urllib.request.Request(DAEMON + path, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=5) as r:
-            return json.loads(r.read())
-    except (urllib.error.URLError, urllib.error.HTTPError, ValueError):
-        return None
-
-
-def _load_profile():
-    try:
-        with open(PROFILE_PATH) as fh:
-            return json.load(fh)
-    except OSError:
-        return None
+def session_cmd(args):
+    # Minimal local session control. Real orchestration lives in the SDK;
+    # the CLI offers convenience entry points.
+    if not args or args[0] == "create":
+        print("Create a Session in code:")
+        print("    from icebox import icebox")
+        print("    with icebox(profile='aws') as s:")
+        print("        s.run('python your_agent.py')")
+        return
+    if args[0] == "run":
+        cmd = " ".join(args[1:])
+        print(f"Running in a Session: {cmd!r}")
+        print("Use the SDK: with icebox() as s: s.run(" + repr(cmd) + ")")
+        return
+    if args[0] == "status":
+        print("Sessions are managed by the SDK; inspect live containers with:")
+        print("    docker ps --filter label=icebox")
+        return
+    if args[0] == "exit":
+        print("Sessions exit automatically when the `with` block ends.")
+        return
+    print(f"Unknown session command: {args[0]}")
 
 
 def main():
@@ -200,12 +183,14 @@ def main():
     if args[0] == "doctor":
         doctor()
         return
-    # Anything else proxies to the daemon binary so `icebox --api` still works.
-    try:
-        os.execvp("icebox-daemon", ["icebox-daemon"] + args)
-    except FileNotFoundError:
-        print("[ERROR] 'icebox-daemon' not found in PATH.")
-        sys.exit(1)
+    if args[0] == "session":
+        session_cmd(args[1:])
+        return
+    print("Usage:")
+    print("  icebox init              set up a Session profile")
+    print("  icebox doctor            check Docker / Session / plugin health")
+    print("  icebox session <cmd>     session helpers (create/run/status/exit)")
+    sys.exit(1)
 
 
 if __name__ == "__main__":

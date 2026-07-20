@@ -10,7 +10,7 @@ python-source = "python"
 
 [project]
 name = "icebox-sdk"
-version = "1.0.0b0"
+version = "2.0.0b0"
 description = "The safety wrapper between autonomous security agents and dangerous actions. Govern any action with one call: govern()."
 readme = "README.md"
 requires-python = ">=3.10"

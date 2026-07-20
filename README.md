@@ -1,6 +1,13 @@
 # ICEBOX
 
-ICEBOX protects your AI agent from doing stupid things.
+ICEBOX gives your AI agent a safe place to fail.
+
+It's a **staging environment for autonomous workflows**. An agent enters a
+Session, runs its whole workflow in isolation, and may fail as many times as it
+wants. Reality only ever sees the first success. ICEBOX never mutates reality
+itself — the agent applies the results.
+
+> Let your AI agent fail 10,000 times. Reality only sees the first success.
 
 ## Install
 
@@ -9,37 +16,30 @@ pip install icebox-sdk
 icebox init
 ```
 
-`icebox init` asks what you want to protect and sets everything up. No YAML,
-no policy DSL, nothing to configure.
+`icebox init` picks a Session profile in about thirty seconds. No YAML, no
+policy DSL.
 
 ## Use it
 
 ```python
-from icebox import govern
+from icebox import icebox
 
-if govern("Delete EC2 Instance", target="Production AWS"):
-    delete_ec2()
+with icebox() as session:
+    session.run(my_agent.run_task)
 ```
 
-That's the whole SDK. Describe the action in plain words; ICEBOX decides
-whether it's allowed. If `govern(...)` is truthy, do it. If not, ICEBOX already
-stopped it and saved the audit entry.
+That's the whole SDK. The agent runs inside the Session; ICEBOX retries on
+failure (default: until the workflow exits 0) and records what happened. When
+it succeeds, the Session exits and you get the artifacts.
 
-When an action is held or blocked, ICEBOX tells you:
-
-```
-ICEBOX protected Production AWS.
-
-Action:
-  Delete EC2 Instance
-
-Decision:
-  Approval Required
-
-Your AI agent attempted a dangerous action and was stopped.
+```python
+with icebox(profile="aws") as session:
+    session.run_cli("python deploy.py")
 ```
 
-## Check your protection
+A CLI command group works too.
+
+## Check your setup
 
 ```bash
 icebox doctor
@@ -48,13 +48,12 @@ icebox doctor
 ```
 ICEBOX Status
 
-✓ Daemon running
-✓ Policy loaded (6 rules)
-✓ Audit enabled
-✓ Sandbox enabled
-✓ Production AWS profile loaded
+✓ Docker available
+✓ Docker daemon running
+✓ default profile loaded
+✓ Audit built in to every Session
 
-You're protected.
+You're ready to stage autonomous workflows.
 ```
 
 ## Examples
@@ -66,13 +65,25 @@ ICEBOX works in front of any agent framework. Recipes, not integrations:
 * [CrewAI](examples/crewai.py)
 * [AutoGen](examples/autogen.py)
 
-Each is a thin wrapper: intercept the tool call, ask `govern()`, run only when
-allowed.
+Each gives the agent a Session and lets it iterate safely.
 
 ## The two ideas
 
-1. **Protect something.** `icebox init` sets up the guardrails.
-2. **Govern dangerous actions.** `govern()` answers one question: is this allowed?
+1. **Stage the workflow.** `icebox()` opens a temporary, isolated Session.
+2. **Let it iterate.** Failure inside the box is free; reality stays untouched.
 
-Everything else — sandboxes, audit trails, approval workflows — is ICEBOX's
-job, not yours.
+Everything else — governance, network policy, resource limits — is an optional
+plugin you mount when you need it. Audit is always on.
+
+## Governance is optional
+
+ICEBOX v2 does not govern by default. If you want the v1 "is this action
+allowed?" gating, mount it:
+
+```python
+from icebox import icebox
+from icebox.governance import Governance
+
+with icebox(plugins=[Governance()]) as session:
+    session.run(my_agent.run_task)
+```

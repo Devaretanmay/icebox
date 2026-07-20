@@ -1,25 +1,19 @@
-"""ICEBOX recipe: protect an AutoGen agent.
+"""ICEBOX recipe: stage an AutoGen group chat.
 
-Starting point, not a maintained integration. The pattern: govern every tool
-call before the agent executes it.
+Starting point, not a maintained integration. The group runs its whole
+workflow inside a Session and may iterate freely; reality only sees the first
+success.
 
-    from icebox import govern
+    from icebox import icebox
 
-    def guarded_tool(name, args):
-        if govern(name, target=args.get("target", "unknown")):
-            return real_tool(name, args)
-        return None
+    with icebox(profile="development") as session:
+        session.run(lambda: my_group_chat.run())
 """
 
-from icebox import govern
+from icebox import icebox
 
 
-def protect(tool_runner):
-    """Wrap an AutoGen tool runner so every tool call is governed."""
-    def wrapper(name, args=None):
-        args = args or {}
-        target = args.get("target") or "unknown"
-        if govern(name, target=target):
-            return tool_runner(name, args)
-        return None
-    return wrapper
+def stage(task: str, group_fn, *, profile: str | None = None):
+    """Run ``group_fn`` inside an ICEBOX Session and return its audit."""
+    with icebox(task=task, profile=profile) as session:
+        return session.run(group_fn)

@@ -1,25 +1,19 @@
-"""ICEBOX recipe: protect a CrewAI agent.
+"""ICEBOX recipe: stage a CrewAI crew.
 
-Starting point, not a maintained integration. The pattern: govern every tool
-before the crew executes it.
+Starting point, not a maintained integration. The crew runs its whole
+workflow inside a Session and may iterate freely; reality only sees the first
+success.
 
-    from icebox import govern
+    from icebox import icebox
 
-    def guarded_tool(tool, args):
-        if govern(tool.name, target=args.get("target", "unknown")):
-            return tool.run(args)
-        return None
+    with icebox(profile="development") as session:
+        session.run(lambda: my_crew.kickoff())
 """
 
-from icebox import govern
+from icebox import icebox
 
 
-def protect(tool_runner):
-    """Wrap a CrewAI tool runner so every tool call is governed."""
-    def wrapper(tool, args=None):
-        args = args or {}
-        target = args.get("target") or "unknown"
-        if govern(tool.name, target=target):
-            return tool_runner(tool, args)
-        return None
-    return wrapper
+def stage(task: str, crew_fn, *, profile: str | None = None):
+    """Run ``crew_fn`` inside an ICEBOX Session and return its audit."""
+    with icebox(task=task, profile=profile) as session:
+        return session.run(crew_fn)
